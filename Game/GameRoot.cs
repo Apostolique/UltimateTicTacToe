@@ -38,10 +38,16 @@ namespace GameProject {
 
             if (_playerClick.Pressed()) {
                 var v = WorldToMicroBoard(InputHelper.NewMouse.Position.ToVector2());
-                if (v != null) {
+                if (v != null && (_forcedMacro == null || _forcedMacro.Value == v.Value.X) && _board.IsAvailable(v.Value.X, v.Value.Y)) {
                     Mark m = _isPlayer1 ? Mark.X : Mark.O;
                     _board.Capture(v.Value.X, v.Value.Y, m);
                     _isPlayer1 = !_isPlayer1;
+
+                    if (_board.IsAvailable(v.Value.Y)) {
+                        _forcedMacro = v.Value.Y;
+                    } else {
+                        _forcedMacro = null;
+                    }
                 }
             }
 
@@ -59,7 +65,10 @@ namespace GameProject {
             _board.DrawTiles(_sb);
 
             var v = WorldToMicroBoard(InputHelper.NewMouse.Position.ToVector2());
-            if (v != null) _sb.DrawCircle(CoordinateToWorld(v.Value.X, v.Value.Y), 10f, TWColor.Purple300, TWColor.Black, 2f);
+            if (v != null && (_forcedMacro == null || _forcedMacro.Value == v.Value.X) && _board.IsAvailable(v.Value.X, v.Value.Y)) {
+                Color c = _isPlayer1 ? TWColor.Red300 : TWColor.Blue300;
+                _sb.DrawCircle(CoordinateToWorld(v.Value.X, v.Value.Y), 10f, c, TWColor.Black, 2f);
+            }
             _sb.End();
 
             base.Draw(gameTime);
@@ -76,26 +85,24 @@ namespace GameProject {
             sb.BorderCircle(xy, size / 2f - 12f, TWColor.Blue500, 4f);
         }
         private void DrawPlayerIndicator() {
-            Color c = TWColor.Red500;
-            if (!_isPlayer1) {
-                c = TWColor.Blue500;
-            }
-
+            Color c = _isPlayer1 ? TWColor.Red500 : TWColor.Blue500;
             _sb.DrawRectangle(new Vector2(10, 10), new Vector2(30, 30), c, TWColor.White, 2f);
         }
         private void DrawBoards() {
-            DrawBoard(MacroOffset, MacroSize);
+            DrawBoard(MacroOffset, MacroSize, TWColor.White);
 
             for (int i = 0; i < 3; i++) {
                 for (int j = 0; j < 3; j++) {
-                    DrawBoard(new Vector2(FullOffset.X + i * MacroSize, FullOffset.Y + j * MacroSize), MicroSize);
+                    int index = j * 3 + i;
+                    Color c = (_forcedMacro == null || _forcedMacro.Value == index) && _board.IsAvailable(index) ? TWColor.White : TWColor.Gray600;
+                    DrawBoard(new Vector2(FullOffset.X + i * MacroSize, FullOffset.Y + j * MacroSize), MicroSize, c);
                 }
             }
         }
-        private void DrawBoard(Vector2 offset, float spacing) {
+        private void DrawBoard(Vector2 offset, float spacing, Color c) {
             for (int i = 1; i <= 2; i++) {
-                _sb.FillLine(new Vector2(offset.X + i * spacing, offset.Y), new Vector2(offset.X + i * spacing, offset.Y + spacing * 3f), 4f, TWColor.White);
-                _sb.FillLine(new Vector2(offset.X,  offset.Y + i * spacing), new Vector2(offset.X + spacing * 3f, offset.Y + i * spacing), 4f, TWColor.White);
+                _sb.FillLine(new Vector2(offset.X + i * spacing, offset.Y), new Vector2(offset.X + i * spacing, offset.Y + spacing * 3f), 4f, c);
+                _sb.FillLine(new Vector2(offset.X,  offset.Y + i * spacing), new Vector2(offset.X + spacing * 3f, offset.Y + i * spacing), 4f, c);
             }
         }
 
@@ -182,6 +189,14 @@ namespace GameProject {
                 Owner = Validate(_tiles);
             }
 
+            public bool IsAvailable(int x) {
+                return Owner == Mark.None && _tiles[x].Owner == Mark.None;
+            }
+
+            public bool IsAvailable(int x, int y) {
+                return Owner == Mark.None && _tiles[x].Owner == Mark.None && _tiles[x].IsAvailable(y);
+            }
+
             public void DrawTiles(ShapeBatch sb) {
                 for (int i = 0; i < _tiles.Length; i++) {
                     int macroX = i % 3;
@@ -196,6 +211,13 @@ namespace GameProject {
                     } else if(_tiles[i].Owner == Mark.O) {
                         DrawO(sb, center, MacroSize - 16);
                     }
+                }
+
+                Vector2 boardCenter = new Vector2(MacroOffset.X + MacroSize * 3f / 2f, MacroOffset.Y + MacroSize * 3f / 2f);
+                if (Owner == Mark.X) {
+                    DrawX(sb, boardCenter, new Vector2(MacroSize * 3f - 32, MacroSize * 3f - 32));
+                } else if(Owner == Mark.O) {
+                    DrawO(sb, boardCenter, MacroSize * 3f - 16);
                 }
             }
 
@@ -212,6 +234,10 @@ namespace GameProject {
             public void Capture(int index, Mark player) {
                 _tiles[index].Owner = player;
                 Owner = Validate(_tiles);
+            }
+
+            public bool IsAvailable(int index) {
+                return _tiles[index].Owner == Mark.None;
             }
 
             public void DrawTiles(ShapeBatch sb, int macroX, int macroY) {
@@ -262,6 +288,7 @@ namespace GameProject {
         ICondition _playerClick = new MouseCondition(MouseButton.LeftButton);
 
         MacroBoard _board = new MacroBoard();
+        int? _forcedMacro = null;
 
         bool _isPlayer1 = true;
         public static float MacroSize = 200f;
