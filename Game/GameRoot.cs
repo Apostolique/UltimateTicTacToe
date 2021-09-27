@@ -37,7 +37,12 @@ namespace GameProject {
                 Exit();
 
             if (_playerClick.Pressed()) {
-                _isPlayer1 = !_isPlayer1;
+                var v = WorldToMicroBoard(InputHelper.NewMouse.Position.ToVector2());
+                if (v != null) {
+                    Mark m = _isPlayer1 ? Mark.X : Mark.O;
+                    _board.Capture(v.Value.X, v.Value.Y, m);
+                    _isPlayer1 = !_isPlayer1;
+                }
             }
 
             InputHelper.UpdateCleanup();
@@ -50,23 +55,25 @@ namespace GameProject {
             _sb.Begin();
             DrawPlayerIndicator();
             DrawBoards();
-            DrawX(new Vector2(100, 100), new Vector2(15, 15));
-            DrawO(new Vector2(200, 200), 30);
 
-            var v = MouseToMicroBoard(InputHelper.NewMouse.Position.ToVector2());
-            if (v != null) _sb.DrawCircle(v.Value, 10f, TWColor.Purple300, TWColor.Black, 2f);
+            _board.DrawTiles(_sb);
+
+            var v = WorldToMicroBoard(InputHelper.NewMouse.Position.ToVector2());
+            if (v != null) _sb.DrawCircle(CoordinateToWorld(v.Value.X, v.Value.Y), 10f, TWColor.Purple300, TWColor.Black, 2f);
             _sb.End();
 
             base.Draw(gameTime);
         }
 
-        private void DrawX(Vector2 xy, Vector2 size) {
-            _sb.DrawLine(xy - size / 2f, xy + size / 2f, 8f, TWColor.White, TWColor.Red500, 4f);
-            _sb.DrawLine(xy + new Vector2(-size.X / 2f, size.Y / 2f), xy + new Vector2(size.X / 2f, -size.Y / 2f), 8f, TWColor.White, TWColor.Red500, 4f);
-            _sb.FillLine(xy - size / 2f, xy + size / 2f, 4f, TWColor.White);
+        public static void DrawX(ShapeBatch sb, Vector2 xy, Vector2 size) {
+            sb.DrawLine(xy - size / 2f, xy + size / 2f, 8f, TWColor.White, TWColor.Red500, 4f);
+            sb.DrawLine(xy + new Vector2(-size.X / 2f, size.Y / 2f), xy + new Vector2(size.X / 2f, -size.Y / 2f), 8f, TWColor.White, TWColor.Red500, 4f);
+            sb.FillLine(xy - size / 2f, xy + size / 2f, 4f, TWColor.White);
         }
-        private void DrawO(Vector2 xy, float size) {
-            _sb.DrawCircle(xy, size / 2f, TWColor.White, TWColor.Blue500, 4f);
+        public static void DrawO(ShapeBatch sb, Vector2 xy, float size) {
+            sb.BorderCircle(xy, size / 2f, TWColor.Blue500, 4f);
+            sb.BorderCircle(xy, size / 2f - 4f, TWColor.White, 8f);
+            sb.BorderCircle(xy, size / 2f - 12f, TWColor.Blue500, 4f);
         }
         private void DrawPlayerIndicator() {
             Color c = TWColor.Red500;
@@ -77,11 +84,11 @@ namespace GameProject {
             _sb.DrawRectangle(new Vector2(10, 10), new Vector2(30, 30), c, TWColor.White, 2f);
         }
         private void DrawBoards() {
-            DrawBoard(_macroOffset, _macroSize);
+            DrawBoard(MacroOffset, MacroSize);
 
             for (int i = 0; i < 3; i++) {
                 for (int j = 0; j < 3; j++) {
-                    DrawBoard(new Vector2(_fullOffset.X + i * _macroSize, _fullOffset.Y + j * _macroSize), _microSize);
+                    DrawBoard(new Vector2(FullOffset.X + i * MacroSize, FullOffset.Y + j * MacroSize), MicroSize);
                 }
             }
         }
@@ -92,36 +99,51 @@ namespace GameProject {
             }
         }
 
-        private Vector2? MouseToMacroBoard(Vector2 xy) {
+        private int? WorldToMacroBoard(Vector2 xy) {
             if (
-                xy.X <= _macroOffset.X ||
-                xy.X >= _macroOffset.X + _macroSize * 3f ||
-                xy.Y <= _macroOffset.Y ||
-                xy.Y >= _macroOffset.Y + _macroSize * 3f) {
+                xy.X <= MacroOffset.X ||
+                xy.X >= MacroOffset.X + MacroSize * 3f ||
+                xy.Y <= MacroOffset.Y ||
+                xy.Y >= MacroOffset.Y + MacroSize * 3f) {
                 return null;
             }
 
-            var x = MathF.Floor((xy.X - _macroOffset.X) / _macroSize);
-            var y = MathF.Floor((xy.Y - _macroOffset.Y) / _macroSize);
+            var macroX = (int)MathF.Floor((xy.X - MacroOffset.X) / MacroSize);
+            var macroY = (int)MathF.Floor((xy.Y - MacroOffset.Y) / MacroSize);
 
-            return new Vector2(_macroOffset.X + x * _macroSize + _macroSize / 2f, _macroOffset.Y + y * _macroSize + _macroSize / 2f);
+            return macroY * 3 + macroX;
         }
-        private Vector2? MouseToMicroBoard(Vector2 xy) {
+        private (int X, int Y)? WorldToMicroBoard(Vector2 xy) {
             if (
-                xy.X <= _macroOffset.X ||
-                xy.X >= _macroOffset.X + _macroSize * 3f ||
-                xy.Y <= _macroOffset.Y ||
-                xy.Y >= _macroOffset.Y + _macroSize * 3f) {
+                xy.X <= MacroOffset.X ||
+                xy.X >= MacroOffset.X + MacroSize * 3f ||
+                xy.Y <= MacroOffset.Y ||
+                xy.Y >= MacroOffset.Y + MacroSize * 3f) {
                 return null;
             }
 
-            var macroX = MathF.Floor((xy.X - _macroOffset.X) / _macroSize);
-            var macroY = MathF.Floor((xy.Y - _macroOffset.Y) / _macroSize);
+            var macroX = (int)MathF.Floor((xy.X - MacroOffset.X) / MacroSize);
+            var macroY = (int)MathF.Floor((xy.Y - MacroOffset.Y) / MacroSize);
 
-            var x = MathHelper.Clamp(MathF.Floor((xy.X - _fullOffset.X - macroX * _macroSize) / _microSize), 0, 2);
-            var y = MathHelper.Clamp(MathF.Floor((xy.Y - _fullOffset.Y - macroY * _macroSize) / _microSize), 0, 2);
+            var microX = (int)MathHelper.Clamp(MathF.Floor((xy.X - FullOffset.X - macroX * MacroSize) / MicroSize), 0, 2);
+            var microY = (int)MathHelper.Clamp(MathF.Floor((xy.Y - FullOffset.Y - macroY * MacroSize) / MicroSize), 0, 2);
 
-            return new Vector2(_fullOffset.X + macroX * _macroSize + x * _microSize + _microSize / 2f, _fullOffset.Y + macroY * _macroSize + y * _microSize + _microSize / 2f);
+            return (macroY * 3 + macroX, microY * 3 + microX);
+        }
+        private Vector2 CoordinateToWorld(int x) {
+            int macroX = x % 3;
+            int macroY = x / 3;
+
+            return new Vector2(MacroOffset.X + macroX * MacroSize + MacroSize / 2f, MacroOffset.Y + macroY * MacroSize + MacroSize / 2f);
+        }
+        private Vector2 CoordinateToWorld(int x, int y) {
+            int macroX = x % 3;
+            int macroY = x / 3;
+
+            int microX = y % 3;
+            int microY = y / 3;
+
+            return new Vector2(FullOffset.X + macroX * MacroSize + microX * MicroSize + MicroSize / 2f, FullOffset.Y + macroY * MacroSize + microY * MicroSize + MicroSize / 2f);
         }
 
         public static Mark Validate(ITile[] tiles) {
@@ -160,6 +182,23 @@ namespace GameProject {
                 Owner = Validate(_tiles);
             }
 
+            public void DrawTiles(ShapeBatch sb) {
+                for (int i = 0; i < _tiles.Length; i++) {
+                    int macroX = i % 3;
+                    int macroY = i / 3;
+
+                    _tiles[i].DrawTiles(sb, macroX, macroY);
+
+                    Vector2 center = new Vector2(MacroOffset.X + macroX * MacroSize + MacroSize / 2f, MacroOffset.Y + macroY * MacroSize + MacroSize / 2f);
+
+                    if (_tiles[i].Owner == Mark.X) {
+                        DrawX(sb, center, new Vector2(MacroSize - 32, MacroSize - 32));
+                    } else if(_tiles[i].Owner == Mark.O) {
+                        DrawO(sb, center, MacroSize - 16);
+                    }
+                }
+            }
+
             MicroBoard[] _tiles = new MicroBoard[9] {
                 new MicroBoard(), new MicroBoard(), new MicroBoard(),
                 new MicroBoard(), new MicroBoard(), new MicroBoard(),
@@ -173,6 +212,21 @@ namespace GameProject {
             public void Capture(int index, Mark player) {
                 _tiles[index].Owner = player;
                 Owner = Validate(_tiles);
+            }
+
+            public void DrawTiles(ShapeBatch sb, int macroX, int macroY) {
+                for (int i = 0; i < _tiles.Length; i++) {
+                    int x = i % 3;
+                    int y = i / 3;
+
+                    Vector2 center = new Vector2(FullOffset.X + macroX * MacroSize + x * MicroSize + MicroSize / 2f, FullOffset.Y + macroY * MacroSize + y * MicroSize + MicroSize / 2f);
+
+                    if (_tiles[i].Owner == Mark.X) {
+                        DrawX(sb, center, new Vector2(MicroSize - 32, MicroSize - 32));
+                    } else if(_tiles[i].Owner == Mark.O) {
+                        DrawO(sb, center, MicroSize - 16);
+                    }
+                }
             }
 
             Tile[] _tiles = new Tile[9] {
@@ -210,10 +264,10 @@ namespace GameProject {
         MacroBoard _board = new MacroBoard();
 
         bool _isPlayer1 = true;
-        float _macroSize = 200f;
-        float _microSize = 200f / 4f;
-        Vector2 _macroOffset = new Vector2(50, 50);
-        Vector2 _microOffset = new Vector2(25, 25);
-        Vector2 _fullOffset = new Vector2(75, 75);
+        public static float MacroSize = 200f;
+        public static float MicroSize = 200f / 4f;
+        public static Vector2 MacroOffset = new Vector2(50, 50);
+        public static Vector2 MicroOffset = new Vector2(25, 25);
+        public static Vector2 FullOffset = new Vector2(75, 75);
     }
 }
