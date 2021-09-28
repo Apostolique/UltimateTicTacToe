@@ -215,7 +215,7 @@ namespace GameProject {
 
         private class MacroBoard : ITile {
             public Mark Owner { get; set; } = Mark.None;
-            public FloatTween Scale { get; set; } = new FloatTween(0f, 1f, 1000, Easing.ElasticOut);
+            public ITween<float> Scale { get; set; } = new FloatTween(0f, 1f, 1000, Easing.ElasticOut);
             public Color OldColor { get; set; } = TWColor.Black;
             public Color OppositeColor { get; set; } = TWColor.Black;
             public Color NewColor { get; set; } = TWColor.Black;
@@ -226,7 +226,7 @@ namespace GameProject {
                 Owner = Validate(_tiles);
 
                 if (Owner != Mark.None) {
-                    Scale = new FloatTween(0f, 1f, 1000, Easing.ElasticOut);
+                    Scale = new WaitTween<float>(0f, 400).To(1f, 1000, Easing.ElasticOut);
                 }
             }
 
@@ -293,7 +293,7 @@ namespace GameProject {
 
         private class MicroBoard : ITile {
             public Mark Owner { get; set; } = Mark.None;
-            public FloatTween Scale { get; set; }
+            public ITween<float> Scale { get; set; }
             public Color OldColor { get; set; } = TWColor.Black;
             public Color OppositeColor { get; set; } = TWColor.Black;
             public Color NewColor { get; set; } = TWColor.Black;
@@ -305,7 +305,7 @@ namespace GameProject {
                 Owner = Validate(_tiles);
 
                 if (Owner != Mark.None) {
-                    Scale = new FloatTween(0f, 1f, 1000, Easing.ElasticOut);
+                    Scale = new WaitTween<float>(0f, 200).To(1f, 1000, Easing.ElasticOut);
                 }
             }
 
@@ -350,12 +350,12 @@ namespace GameProject {
 
         private class Tile : ITile {
             public Mark Owner { get; set; } = Mark.None;
-            public FloatTween Scale { get; set; } = new FloatTween(0f, 1f, 1000, Easing.ElasticOut);
+            public ITween<float> Scale { get; set; } = new FloatTween(0f, 1f, 1000, Easing.ElasticOut);
         }
 
         public interface ITile {
             Mark Owner { get; set; }
-            FloatTween Scale { get; set; }
+            ITween<float> Scale { get; set; }
         }
 
         public enum Mark {
