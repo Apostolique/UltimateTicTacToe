@@ -53,6 +53,8 @@ namespace GameProject {
                 }
             }
 
+            if (_reset.Pressed()) Reset();
+
             InputHelper.UpdateCleanup();
             base.Update(gameTime);
         }
@@ -73,6 +75,12 @@ namespace GameProject {
             _sb.End();
 
             base.Draw(gameTime);
+        }
+
+        private void Reset() {
+            _board = new MacroBoard();
+            ForcedMacro = null;
+            _isPlayer1 = true;
         }
 
         public static void DrawX(ShapeBatch sb, Vector2 xy, Vector2 size, float scale) {
@@ -332,6 +340,7 @@ namespace GameProject {
                 new GamePadCondition(GamePadButton.Back, 0)
             );
         ICondition _playerClick = new MouseCondition(MouseButton.LeftButton);
+        ICondition _reset = new KeyboardCondition(Keys.R);
 
         MacroBoard _board = new MacroBoard();
         public static int? ForcedMacro = null;
