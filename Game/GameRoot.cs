@@ -67,10 +67,44 @@ namespace GameProject {
 
             _board.Draw(_sb);
 
+            Color c = _isPlayer1 ? TWColor.Red300 : TWColor.Blue300;
             var v = WorldToMicroBoard(InputHelper.NewMouse.Position.ToVector2());
             if (v != null && (ForcedMacro == null || ForcedMacro.Value == v.Value.X) && _board.IsAvailable(v.Value.X, v.Value.Y)) {
-                Color c = _isPlayer1 ? TWColor.Red300 : TWColor.Blue300;
-                _sb.DrawCircle(CoordinateToWorld(v.Value.X, v.Value.Y), 10f, c, TWColor.Black, 2f);
+                bool isCreated = _cursor == null;
+                Vector2? oldCursor = _cursor;
+                _cursor = CoordinateToWorld(v.Value.X, v.Value.Y);
+                _cursorPlayer = _isPlayer1;
+
+                if (isCreated) {
+                    if (_cursorKillXY != null) {
+                        _cursorCreate = new FloatTween(_cursorKill.Value, 1f, 800, Easing.SineInOut);
+                        _cursorMotion = new Vector2Tween(_cursorKillXY.Value, _cursor.Value, 800, Easing.BounceOut);
+                        _cursorKillXY = null;
+                    } else {
+                        _cursorCreate = new FloatTween(0f, 1f, 800, Easing.ElasticOut);
+                        _cursorMotion = new WaitTween<Vector2>(_cursor.Value, 0);
+                    }
+                }
+
+                if (_cursor != oldCursor) {
+                    _cursorMotion = new Vector2Tween(_cursorMotion.Value, _cursor.Value, 800, Easing.BounceOut);
+                }
+
+                _sb.DrawCircle(_cursorMotion.Value, 10f * _cursorCreate.Value, c, TWColor.Black, 2f);
+            } else if (_cursor != null) {
+                if (_cursorPlayer == _isPlayer1) {
+                    _cursorKillXY = _cursor;
+                    _cursorKill = new FloatTween(1f, 0f, 400, Easing.BackIn);
+                    _cursorKillColor = c;
+                }
+                _cursor = null;
+            }
+            if (_cursorKillXY != null) {
+                _sb.DrawCircle(_cursorKillXY.Value, 10f * _cursorKill.Value, _cursorKillColor, TWColor.Black, 2f);
+
+                if (_cursorKill.Value == 0f) {
+                    _cursorKillXY = null;
+                }
             }
             _sb.End();
 
@@ -341,6 +375,15 @@ namespace GameProject {
             );
         ICondition _playerClick = new MouseCondition(MouseButton.LeftButton);
         ICondition _reset = new KeyboardCondition(Keys.R);
+
+        Vector2? _cursor = null;
+        bool _cursorPlayer;
+        FloatTween _cursorCreate;
+        ITween<Vector2> _cursorMotion;
+
+        Vector2? _cursorKillXY = null;
+        FloatTween _cursorKill;
+        Color _cursorKillColor;
 
         MacroBoard _board = new MacroBoard();
         public static int? ForcedMacro = null;
