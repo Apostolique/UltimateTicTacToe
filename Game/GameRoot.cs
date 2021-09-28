@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Apos.Input;
 using Apos.Shapes;
+using Apos.Tweens;
 
 namespace GameProject {
     public class GameRoot : Game {
@@ -32,6 +33,7 @@ namespace GameProject {
 
         protected override void Update(GameTime gameTime) {
             InputHelper.UpdateSetup();
+            TweenHelper.UpdateSetup(gameTime);
 
             if (_quit.Pressed())
                 Exit();
@@ -74,15 +76,15 @@ namespace GameProject {
             base.Draw(gameTime);
         }
 
-        public static void DrawX(ShapeBatch sb, Vector2 xy, Vector2 size) {
-            sb.DrawLine(xy - size / 2f, xy + size / 2f, 8f, TWColor.White, TWColor.Red500, 4f);
-            sb.DrawLine(xy + new Vector2(-size.X / 2f, size.Y / 2f), xy + new Vector2(size.X / 2f, -size.Y / 2f), 8f, TWColor.White, TWColor.Red500, 4f);
-            sb.FillLine(xy - size / 2f, xy + size / 2f, 4f, TWColor.White);
+        public static void DrawX(ShapeBatch sb, Vector2 xy, Vector2 size, float scale) {
+            sb.DrawLine(xy - (size / 2f) * scale, xy + (size / 2f) * scale, 8f * scale, TWColor.White, TWColor.Red500, 4f * scale);
+            sb.DrawLine(xy + new Vector2(-size.X / 2f, size.Y / 2f) * scale, xy + new Vector2(size.X / 2f, -size.Y / 2f) * scale, 8f * scale, TWColor.White, TWColor.Red500, 4f * scale);
+            sb.FillLine(xy - (size / 2f) * scale, xy + (size / 2f) * scale, 4f * scale, TWColor.White);
         }
-        public static void DrawO(ShapeBatch sb, Vector2 xy, float size) {
-            sb.BorderCircle(xy, size / 2f, TWColor.Blue500, 4f);
-            sb.BorderCircle(xy, size / 2f - 4f, TWColor.White, 8f);
-            sb.BorderCircle(xy, size / 2f - 12f, TWColor.Blue500, 4f);
+        public static void DrawO(ShapeBatch sb, Vector2 xy, float size, float scale) {
+            sb.BorderCircle(xy, (size / 2f) * scale, TWColor.Blue500, 4f * scale);
+            sb.BorderCircle(xy, (size / 2f - 4f) * scale, TWColor.White, 8f * scale);
+            sb.BorderCircle(xy, (size / 2f - 12f) * scale, TWColor.Blue500, 4f * scale);
         }
         private void DrawPlayerIndicator() {
             Color c = _isPlayer1 ? TWColor.Red500 : TWColor.Blue500;
@@ -183,10 +185,15 @@ namespace GameProject {
 
         private class MacroBoard : ITile {
             public Mark Owner { get; set; } = Mark.None;
+            public FloatTween Scale { get; set; } = new FloatTween(0f, 1f, 1000, Easing.ElasticOut);
 
             public void Capture(int x, int y, Mark player) {
                 _tiles[x].Capture(y, player);
                 Owner = Validate(_tiles);
+
+                if (Owner != Mark.None) {
+                    Scale = new FloatTween(0f, 1f, 1000, Easing.ElasticOut);
+                }
             }
 
             public bool IsAvailable(int x) {
@@ -207,17 +214,17 @@ namespace GameProject {
                     Vector2 center = new Vector2(MacroOffset.X + macroX * MacroSize + MacroSize / 2f, MacroOffset.Y + macroY * MacroSize + MacroSize / 2f);
 
                     if (_tiles[i].Owner == Mark.X) {
-                        DrawX(sb, center, new Vector2(MacroSize - 32, MacroSize - 32));
+                        DrawX(sb, center, new Vector2(MacroSize - 32f, MacroSize - 32f), _tiles[i].Scale.Value);
                     } else if(_tiles[i].Owner == Mark.O) {
-                        DrawO(sb, center, MacroSize - 16);
+                        DrawO(sb, center, MacroSize - 16f, _tiles[i].Scale.Value);
                     }
                 }
 
                 Vector2 boardCenter = new Vector2(MacroOffset.X + MacroSize * 3f / 2f, MacroOffset.Y + MacroSize * 3f / 2f);
                 if (Owner == Mark.X) {
-                    DrawX(sb, boardCenter, new Vector2(MacroSize * 3f - 32, MacroSize * 3f - 32));
+                    DrawX(sb, boardCenter, new Vector2(MacroSize * 3f - 32, MacroSize * 3f - 32), Scale.Value);
                 } else if(Owner == Mark.O) {
-                    DrawO(sb, boardCenter, MacroSize * 3f - 16);
+                    DrawO(sb, boardCenter, MacroSize * 3f - 16, Scale.Value);
                 }
             }
 
@@ -230,10 +237,16 @@ namespace GameProject {
 
         private class MicroBoard : ITile {
             public Mark Owner { get; set; } = Mark.None;
+            public FloatTween Scale { get; set; }
 
             public void Capture(int index, Mark player) {
                 _tiles[index].Owner = player;
+                _tiles[index].Scale = new FloatTween(0f, 1f, 1000, Easing.ElasticOut);
                 Owner = Validate(_tiles);
+
+                if (Owner != Mark.None) {
+                    Scale = new FloatTween(0f, 1f, 1000, Easing.ElasticOut);
+                }
             }
 
             public bool IsAvailable(int index) {
@@ -248,9 +261,9 @@ namespace GameProject {
                     Vector2 center = new Vector2(FullOffset.X + macroX * MacroSize + x * MicroSize + MicroSize / 2f, FullOffset.Y + macroY * MacroSize + y * MicroSize + MicroSize / 2f);
 
                     if (_tiles[i].Owner == Mark.X) {
-                        DrawX(sb, center, new Vector2(MicroSize - 32, MicroSize - 32));
+                        DrawX(sb, center, new Vector2(MicroSize - 32f, MicroSize - 32f), _tiles[i].Scale.Value);
                     } else if(_tiles[i].Owner == Mark.O) {
-                        DrawO(sb, center, MicroSize - 16);
+                        DrawO(sb, center, MicroSize - 16f, _tiles[i].Scale.Value);
                     }
                 }
             }
@@ -264,10 +277,12 @@ namespace GameProject {
 
         private class Tile : ITile {
             public Mark Owner { get; set; } = Mark.None;
+            public FloatTween Scale { get; set; } = new FloatTween(0f, 1f, 1000, Easing.ElasticOut);
         }
 
         public interface ITile {
             Mark Owner { get; set; }
+            FloatTween Scale { get; set; }
         }
 
         public enum Mark {
