@@ -21,10 +21,6 @@ jobs:
       uses: actions/setup-dotnet@v1
       with:
         dotnet-version: '3.1.x'
-    - name: Get version from tag
-      run: |
-        TAGVERSION=$(git describe --tags --abbrev=0)
-        echo "TAGVERSION=${TAGVERSION:1}" >> $GITHUB_ENV
     - name: Build Windows
       run: dotnet publish ${{ env.PROJECT_PATH }} -r win-x64 -c Release --output build-windows
     - name: Build Osx
