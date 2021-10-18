@@ -51,6 +51,8 @@ namespace GameProject {
             if (KeyboardCondition.Pressed(Keys.Enter) && !NetClient.IsRunning) {
                 NetServer.Stop();
 
+                _settings = EnsureJson<Settings>("Settings.json");
+
                 NetClient.Join(_settings.HostIp);
             }
 
