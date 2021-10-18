@@ -24,6 +24,7 @@ namespace GameProject {
         static readonly int _packetClearStart;
         static readonly NetWriter _initialData = new NetWriter();
         static readonly NetReader _r = new NetReader();
+        static bool _hasInitialData;
 
         public static bool HasPeer => _manager.ConnectedPeersCount > 0;
 
@@ -38,6 +39,7 @@ namespace GameProject {
             _listener.NetworkReceiveEvent += (peer, readerOutdated, delieryMethod) => {
                 if (readerOutdated.EndOfData) {
                     GameRoot.Reset();
+                    _hasInitialData = true;
                     return;
                 }
                 _r.ReadFrom(readerOutdated);
@@ -66,6 +68,7 @@ namespace GameProject {
                     return;
                 }
                 var peer = request.Accept();
+                _hasInitialData = false;
             };
         }
 
@@ -86,7 +89,7 @@ namespace GameProject {
             if (!IsRunning)
                 return;
             _manager.PollEvents();
-            if ((_syncPlayersTimer += GameRoot.DeltaTime) >= SYNC_PLAYER_TIME) {
+            if (_hasInitialData && (_syncPlayersTimer += GameRoot.DeltaTime) >= SYNC_PLAYER_TIME) {
                 _syncPlayersTimer -= SYNC_PLAYER_TIME;
                 if (GameRoot._isPlayer1) {
                     var w = CreatePacket(Packets.SyncPlayer);

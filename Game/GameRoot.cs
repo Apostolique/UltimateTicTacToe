@@ -59,23 +59,24 @@ namespace GameProject {
             NetServer.PollEvents();
             NetClient.PollEvents();
 
-            MousePosition = InputHelper.NewMouse.Position.ToVector2();
-            if (_playerClick.Pressed() &&
-                (_isPlayer1 && NetServer.IsRunning || !_isPlayer1 && NetClient.IsRunning || !NetServer.HasPeer && !NetClient.HasPeer)) {
-                var v = WorldToMicroBoard(MousePosition);
-                if (v != null && (ForcedMacro == null || ForcedMacro.Value == v.Value.X) && _board.IsAvailable(v.Value.X, v.Value.Y)) {
-                    if (NetServer.IsRunning) {
-                        var w = NetServer.CreatePacket(NetServer.Packets.MakePlay);
-                        w.Put(0, 8, v.Value.X);
-                        w.Put(0, 8, v.Value.Y);
-                        NetServer.SendToAll(w, 0, DeliveryMethod.ReliableOrdered);
-                    } else if (NetClient.IsRunning) {
-                        var w = NetClient.CreatePacket(NetClient.Packets.MakePlay);
-                        w.Put(0, 8, v.Value.X);
-                        w.Put(0, 8, v.Value.Y);
-                        NetClient.Send(w, 0, DeliveryMethod.ReliableOrdered);
+            if (_isPlayer1 && NetServer.IsRunning || !_isPlayer1 && NetClient.IsRunning || !NetServer.HasPeer && !NetClient.HasPeer) {
+                MousePosition = InputHelper.NewMouse.Position.ToVector2();
+                if (_playerClick.Pressed()) {
+                    var v = WorldToMicroBoard(MousePosition);
+                    if (v != null && (ForcedMacro == null || ForcedMacro.Value == v.Value.X) && _board.IsAvailable(v.Value.X, v.Value.Y)) {
+                        if (NetServer.IsRunning) {
+                            var w = NetServer.CreatePacket(NetServer.Packets.MakePlay);
+                            w.Put(0, 8, v.Value.X);
+                            w.Put(0, 8, v.Value.Y);
+                            NetServer.SendToAll(w, 0, DeliveryMethod.ReliableOrdered);
+                        } else if (NetClient.IsRunning) {
+                            var w = NetClient.CreatePacket(NetClient.Packets.MakePlay);
+                            w.Put(0, 8, v.Value.X);
+                            w.Put(0, 8, v.Value.Y);
+                            NetClient.Send(w, 0, DeliveryMethod.ReliableOrdered);
+                        }
+                        MakePlay(v.Value.X, v.Value.Y);
                     }
-                    MakePlay(v.Value.X, v.Value.Y);
                 }
             }
 
