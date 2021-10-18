@@ -14,6 +14,7 @@ namespace GameProject {
         public enum Packets {
             SyncPlayer,
             MakePlay,
+            ResetGame,
         }
 
         static bool _hasInitialData;
@@ -74,8 +75,12 @@ namespace GameProject {
             _manager.PollEvents();
             if (_hasInitialData && (_syncPlayersTimer += GameRoot.DeltaTime) >= SYNC_PLAYER_TIME) {
                 _syncPlayersTimer -= SYNC_PLAYER_TIME;
-                var w = CreatePacket(Packets.SyncPlayer);
-                Send(w, 1, DeliveryMethod.Sequenced);
+                if (!GameRoot._isPlayer1) {
+                    var w = CreatePacket(Packets.SyncPlayer);
+                    w.Put(GameRoot.MousePosition.X);
+                    w.Put(GameRoot.MousePosition.Y);
+                    Send(w, 1, DeliveryMethod.Sequenced);
+                }
             }
         }
 
@@ -93,11 +98,16 @@ namespace GameProject {
             _r.ReadFrom(reader);
             var p = (NetServer.Packets)_r.ReadInt(0, NetServer._maxPacketId);
             if (p == NetServer.Packets.SyncPlayer) {
-
+                if (GameRoot._isPlayer1) {
+                    GameRoot.MousePosition.X = _r.ReadFloat();
+                    GameRoot.MousePosition.Y = _r.ReadFloat();
+                }
             } else if (p == NetServer.Packets.MakePlay) {
                 var x = _r.ReadInt(0, 8);
                 var y = _r.ReadInt(0, 8);
-                GameRoot.MakePlay(x, y, false);
+                GameRoot.MakePlay(x, y);
+            } else if (p == NetServer.Packets.ResetGame) {
+                GameRoot.Reset();
             }
         }
     }

@@ -13,6 +13,7 @@ namespace GameProject {
         public enum Packets {
             SyncPlayer,
             MakePlay,
+            ResetGame,
         }
 
         static double _syncPlayersTimer;
@@ -42,11 +43,16 @@ namespace GameProject {
                 _r.ReadFrom(readerOutdated);
                 var p = (NetClient.Packets)_r.ReadInt(0, NetClient._maxPacketId);
                 if (p == NetClient.Packets.SyncPlayer) {
-
+                    if (!GameRoot._isPlayer1) {
+                        GameRoot.MousePosition.X = _r.ReadFloat();
+                        GameRoot.MousePosition.Y = _r.ReadFloat();
+                    }
                 } else if (p == NetClient.Packets.MakePlay) {
                     var x = _r.ReadInt(0, 8);
                     var y = _r.ReadInt(0, 8);
-                    GameRoot.MakePlay(x, y, false);
+                    GameRoot.MakePlay(x, y);
+                } else if (p == NetClient.Packets.ResetGame) {
+                    GameRoot.Reset();
                 }
             };
             _listener.PeerConnectedEvent += peer => {
@@ -82,8 +88,12 @@ namespace GameProject {
             _manager.PollEvents();
             if ((_syncPlayersTimer += GameRoot.DeltaTime) >= SYNC_PLAYER_TIME) {
                 _syncPlayersTimer -= SYNC_PLAYER_TIME;
-                var w = CreatePacket(Packets.SyncPlayer);
-                SendToAll(w, 1, DeliveryMethod.Sequenced);
+                if (GameRoot._isPlayer1) {
+                    var w = CreatePacket(Packets.SyncPlayer);
+                    w.Put(GameRoot.MousePosition.X);
+                    w.Put(GameRoot.MousePosition.Y);
+                    SendToAll(w, 1, DeliveryMethod.Sequenced);
+                }
             }
         }
 

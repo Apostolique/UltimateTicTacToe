@@ -12,6 +12,7 @@ using Microsoft.Xna.Framework.Input;
 namespace GameProject {
     public class GameRoot : Game {
         public static float DeltaTime { get; private set; }
+        public static Vector2 MousePosition;
 
         public GameRoot() {
             _graphics = new GraphicsDeviceManager(this);
@@ -58,16 +59,36 @@ namespace GameProject {
             NetServer.PollEvents();
             NetClient.PollEvents();
 
+            MousePosition = InputHelper.NewMouse.Position.ToVector2();
             if (_playerClick.Pressed() &&
                 (_isPlayer1 && NetServer.IsRunning || !_isPlayer1 && NetClient.IsRunning || !NetServer.HasPeer && !NetClient.HasPeer)) {
-                var xy = InputHelper.NewMouse.Position.ToVector2();
-                var v = WorldToMicroBoard(xy);
+                var v = WorldToMicroBoard(MousePosition);
                 if (v != null && (ForcedMacro == null || ForcedMacro.Value == v.Value.X) && _board.IsAvailable(v.Value.X, v.Value.Y)) {
-                    MakePlay(v.Value.X, v.Value.Y, true);
+                    if (NetServer.IsRunning) {
+                        var w = NetServer.CreatePacket(NetServer.Packets.MakePlay);
+                        w.Put(0, 8, v.Value.X);
+                        w.Put(0, 8, v.Value.Y);
+                        NetServer.SendToAll(w, 0, DeliveryMethod.ReliableOrdered);
+                    } else if (NetClient.IsRunning) {
+                        var w = NetClient.CreatePacket(NetClient.Packets.MakePlay);
+                        w.Put(0, 8, v.Value.X);
+                        w.Put(0, 8, v.Value.Y);
+                        NetClient.Send(w, 0, DeliveryMethod.ReliableOrdered);
+                    }
+                    MakePlay(v.Value.X, v.Value.Y);
                 }
             }
 
-            if (_reset.Pressed())Reset();
+            if (_reset.Pressed()) {
+                if (NetServer.IsRunning) {
+                    var w = NetServer.CreatePacket(NetServer.Packets.ResetGame);
+                    NetServer.SendToAll(w, 0, DeliveryMethod.ReliableOrdered);
+                } else if (NetClient.IsRunning) {
+                    var w = NetClient.CreatePacket(NetClient.Packets.ResetGame);
+                    NetClient.Send(w, 0, DeliveryMethod.ReliableOrdered);
+                }
+                Reset();
+            }
 
             InputHelper.UpdateCleanup();
             base.Update(gameTime);
@@ -82,7 +103,7 @@ namespace GameProject {
             _board.Draw(_sb);
 
             Color c = _isPlayer1 ? TWColor.Red300 : TWColor.Blue300;
-            var v = WorldToMicroBoard(InputHelper.NewMouse.Position.ToVector2());
+            var v = WorldToMicroBoard(MousePosition);
             if (v != null && (ForcedMacro == null || ForcedMacro.Value == v.Value.X) && _board.IsAvailable(v.Value.X, v.Value.Y)) {
                 bool isCreated = _cursor == null;
                 Vector2? oldCursor = _cursor;
@@ -227,7 +248,7 @@ namespace GameProject {
             return a.Owner != Mark.None && a.Owner == b.Owner && b.Owner == c.Owner;
         }
 
-        public static void MakePlay(int x, int y, bool sync) {
+        public static void MakePlay(int x, int y) {
             Mark m = _isPlayer1 ? Mark.X : Mark.O;
             _board.Capture(x, y, m);
             _isPlayer1 = !_isPlayer1;
@@ -237,24 +258,10 @@ namespace GameProject {
             } else {
                 ForcedMacro = null;
             }
-
-            if (sync) {
-                if (NetServer.IsRunning) {
-                    var w = NetServer.CreatePacket(NetServer.Packets.MakePlay);
-                    w.Put(0, 8, x);
-                    w.Put(0, 8, y);
-                    NetServer.SendToAll(w, 0, DeliveryMethod.ReliableOrdered);
-                } else if (NetClient.IsRunning) {
-                    var w = NetClient.CreatePacket(NetClient.Packets.MakePlay);
-                    w.Put(0, 8, x);
-                    w.Put(0, 8, y);
-                    NetClient.Send(w, 0, DeliveryMethod.ReliableOrdered);
-                }
-            }
         }
 
         public static string GetPath(string name) => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, name);
-        public static T LoadJson<T>(string name) where T : new() {
+        public static T LoadJson<T>(string name)where T : new() {
             T json;
             string jsonPath = GetPath(name);
 
@@ -269,7 +276,7 @@ namespace GameProject {
 
             return json;
         }
-        public static T EnsureJson<T>(string name) where T : new() {
+        public static T EnsureJson<T>(string name)where T : new() {
             T json;
             string jsonPath = GetPath(name);
 
@@ -475,7 +482,7 @@ namespace GameProject {
         static MacroBoard _board = new MacroBoard();
         public static int? ForcedMacro = null;
 
-        static bool _isPlayer1 = true;
+        internal static bool _isPlayer1 = true;
         public static float MacroSize = 200f;
         public static float MicroSize = 200f / 4f;
         public static Vector2 MacroOffset = new Vector2(50, 50);
