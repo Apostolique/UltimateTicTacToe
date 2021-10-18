@@ -11,12 +11,14 @@
     <PublishReadyToRun>false</PublishReadyToRun>
     <TieredCompilation>false</TieredCompilation>
     <RuntimeIdentifiers>win10-x64;linux-x64;osx-x64</RuntimeIdentifiers>
+    <BeautyExcludes>SDL2*;libSDL2*;sdl2*;soft_oal*;openal*;MonoGame.Framework*</BeautyExcludes>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="LiteNetLib" Version="0.9.5.2" />
     <PackageReference Include="MonoGame.Content.Builder.Task" Version="3.8.0.1641" />
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.0.1641" />
+    <PackageReference Include="nulastudio.NetCoreBeauty" Version="1.2.9.3" />
     <PackageReference Include="Apos.Input" Version="2.1.0" />
     <PackageReference Include="Apos.Shapes" Version="0.1.5" />
     <PackageReference Include="Apos.Tweens" Version="0.1.1" />
