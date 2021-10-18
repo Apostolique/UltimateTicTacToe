@@ -1,13 +1,16 @@
 ﻿using System;
-using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Graphics;
-using Microsoft.Xna.Framework.Input;
 using Apos.Input;
 using Apos.Shapes;
 using Apos.Tweens;
+using LiteNetLib;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 
 namespace GameProject {
     public class GameRoot : Game {
+        public static float DeltaTime { get; private set; }
+
         public GameRoot() {
             _graphics = new GraphicsDeviceManager(this);
             IsMouseVisible = true;
@@ -29,6 +32,8 @@ namespace GameProject {
             _sb = new ShapeBatch(GraphicsDevice, Content);
 
             InputHelper.Setup(this);
+
+            NetServer.Host();
         }
 
         protected override void Update(GameTime gameTime) {
@@ -38,22 +43,27 @@ namespace GameProject {
             if (_quit.Pressed())
                 Exit();
 
-            if (_playerClick.Pressed()) {
-                var v = WorldToMicroBoard(InputHelper.NewMouse.Position.ToVector2());
-                if (v != null && (ForcedMacro == null || ForcedMacro.Value == v.Value.X) && _board.IsAvailable(v.Value.X, v.Value.Y)) {
-                    Mark m = _isPlayer1 ? Mark.X : Mark.O;
-                    _board.Capture(v.Value.X, v.Value.Y, m);
-                    _isPlayer1 = !_isPlayer1;
+            if (KeyboardCondition.Pressed(Keys.Enter) && !NetClient.IsRunning) {
+                NetServer.Stop();
 
-                    if (_board.IsAvailable(v.Value.Y)) {
-                        ForcedMacro = v.Value.Y;
-                    } else {
-                        ForcedMacro = null;
-                    }
+                NetClient.Join("86.31.118.179");
+            }
+
+            DeltaTime = (float)gameTime.ElapsedGameTime.TotalSeconds;
+
+            NetServer.PollEvents();
+            NetClient.PollEvents();
+
+            if (_playerClick.Pressed() &&
+                (_isPlayer1 && NetServer.IsRunning || !_isPlayer1 && NetClient.IsRunning)) {
+                var xy = InputHelper.NewMouse.Position.ToVector2();
+                var v = WorldToMicroBoard(xy);
+                if (v != null && (ForcedMacro == null || ForcedMacro.Value == v.Value.X) && _board.IsAvailable(v.Value.X, v.Value.Y)) {
+                    MakePlay(v.Value.X, v.Value.Y, true);
                 }
             }
 
-            if (_reset.Pressed()) Reset();
+            if (_reset.Pressed())Reset();
 
             InputHelper.UpdateCleanup();
             base.Update(gameTime);
@@ -111,7 +121,7 @@ namespace GameProject {
             base.Draw(gameTime);
         }
 
-        private void Reset() {
+        public static void Reset() {
             _board = new MacroBoard();
             ForcedMacro = null;
             _isPlayer1 = true;
@@ -134,7 +144,7 @@ namespace GameProject {
         public static void DrawBoard(ShapeBatch sb, Vector2 offset, float spacing, Color c) {
             for (int i = 1; i <= 2; i++) {
                 sb.FillLine(new Vector2(offset.X + i * spacing, offset.Y), new Vector2(offset.X + i * spacing, offset.Y + spacing * 3f), 4f, c);
-                sb.FillLine(new Vector2(offset.X,  offset.Y + i * spacing), new Vector2(offset.X + spacing * 3f, offset.Y + i * spacing), 4f, c);
+                sb.FillLine(new Vector2(offset.X, offset.Y + i * spacing), new Vector2(offset.X + spacing * 3f, offset.Y + i * spacing), 4f, c);
             }
         }
 
@@ -152,7 +162,7 @@ namespace GameProject {
 
             return macroY * 3 + macroX;
         }
-        private (int X, int Y)? WorldToMicroBoard(Vector2 xy) {
+        public static(int X, int Y) ? WorldToMicroBoard(Vector2 xy) {
             if (
                 xy.X <= MacroOffset.X ||
                 xy.X >= MacroOffset.X + MacroSize * 3f ||
@@ -213,6 +223,32 @@ namespace GameProject {
             return a.Owner != Mark.None && a.Owner == b.Owner && b.Owner == c.Owner;
         }
 
+        public static void MakePlay(int x, int y, bool sync) {
+            Mark m = _isPlayer1 ? Mark.X : Mark.O;
+            _board.Capture(x, y, m);
+            _isPlayer1 = !_isPlayer1;
+
+            if (_board.IsAvailable(y)) {
+                ForcedMacro = y;
+            } else {
+                ForcedMacro = null;
+            }
+
+            if (sync) {
+                if (NetServer.IsRunning) {
+                    var w = NetServer.CreatePacket(NetServer.Packets.MakePlay);
+                    w.Put(0, 8, x);
+                    w.Put(0, 8, y);
+                    NetServer.SendToAll(w, 0, DeliveryMethod.ReliableOrdered);
+                } else if (NetClient.IsRunning) {
+                    var w = NetClient.CreatePacket(NetClient.Packets.MakePlay);
+                    w.Put(0, 8, x);
+                    w.Put(0, 8, y);
+                    NetClient.Send(w, 0, DeliveryMethod.ReliableOrdered);
+                }
+            }
+        }
+
         private class MacroBoard : ITile {
             public Mark Owner { get; set; } = Mark.None;
             public ITween<float> Scale { get; set; } = new FloatTween(0f, 1f, 1000, Easing.ElasticOut);
@@ -271,7 +307,7 @@ namespace GameProject {
 
                     if (_tiles[i].Owner == Mark.X) {
                         DrawX(sb, center, new Vector2(MacroSize - 32f, MacroSize - 32f), _tiles[i].Scale.Value);
-                    } else if(_tiles[i].Owner == Mark.O) {
+                    } else if (_tiles[i].Owner == Mark.O) {
                         DrawO(sb, center, MacroSize - 16f, _tiles[i].Scale.Value);
                     }
                 }
@@ -279,7 +315,7 @@ namespace GameProject {
                 Vector2 boardCenter = new Vector2(MacroOffset.X + MacroSize * 3f / 2f, MacroOffset.Y + MacroSize * 3f / 2f);
                 if (Owner == Mark.X) {
                     DrawX(sb, boardCenter, new Vector2(MacroSize * 3f - 32, MacroSize * 3f - 32), Scale.Value);
-                } else if(Owner == Mark.O) {
+                } else if (Owner == Mark.O) {
                     DrawO(sb, boardCenter, MacroSize * 3f - 16, Scale.Value);
                 }
             }
@@ -335,7 +371,7 @@ namespace GameProject {
 
                     if (_tiles[i].Owner == Mark.X) {
                         DrawX(sb, center, new Vector2(MicroSize - 32f, MicroSize - 32f), _tiles[i].Scale.Value);
-                    } else if(_tiles[i].Owner == Mark.O) {
+                    } else if (_tiles[i].Owner == Mark.O) {
                         DrawO(sb, center, MicroSize - 16f, _tiles[i].Scale.Value);
                     }
                 }
@@ -385,10 +421,10 @@ namespace GameProject {
         FloatTween _cursorKill;
         Color _cursorKillColor;
 
-        MacroBoard _board = new MacroBoard();
+        static MacroBoard _board = new MacroBoard();
         public static int? ForcedMacro = null;
 
-        bool _isPlayer1 = true;
+        static bool _isPlayer1 = true;
         public static float MacroSize = 200f;
         public static float MicroSize = 200f / 4f;
         public static Vector2 MacroOffset = new Vector2(50, 50);
