@@ -1,4 +1,6 @@
 ﻿using System;
+using System.IO;
+using System.Text.Json;
 using Apos.Input;
 using Apos.Shapes;
 using Apos.Tweens;
@@ -15,6 +17,8 @@ namespace GameProject {
             _graphics = new GraphicsDeviceManager(this);
             IsMouseVisible = true;
             Content.RootDirectory = "Content";
+
+            _settings = EnsureJson<Settings>("Settings.json");
         }
 
         protected override void Initialize() {
@@ -46,7 +50,7 @@ namespace GameProject {
             if (KeyboardCondition.Pressed(Keys.Enter) && !NetClient.IsRunning) {
                 NetServer.Stop();
 
-                NetClient.Join("86.31.118.179");
+                NetClient.Join(_settings.HostIp);
             }
 
             DeltaTime = (float)gameTime.ElapsedGameTime.TotalSeconds;
@@ -55,7 +59,7 @@ namespace GameProject {
             NetClient.PollEvents();
 
             if (_playerClick.Pressed() &&
-                (_isPlayer1 && NetServer.IsRunning || !_isPlayer1 && NetClient.IsRunning)) {
+                (_isPlayer1 && NetServer.IsRunning || !_isPlayer1 && NetClient.IsRunning || !NetServer.HasPeer && !NetClient.HasPeer)) {
                 var xy = InputHelper.NewMouse.Position.ToVector2();
                 var v = WorldToMicroBoard(xy);
                 if (v != null && (ForcedMacro == null || ForcedMacro.Value == v.Value.X) && _board.IsAvailable(v.Value.X, v.Value.Y)) {
@@ -249,6 +253,51 @@ namespace GameProject {
             }
         }
 
+        public static string GetPath(string name) => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, name);
+        public static T LoadJson<T>(string name) where T : new() {
+            T json;
+            string jsonPath = GetPath(name);
+
+            if (File.Exists(jsonPath)) {
+                var options = new JsonSerializerOptions {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                };
+                json = JsonSerializer.Deserialize<T>(File.ReadAllText(jsonPath), options);
+            } else {
+                json = new T();
+            }
+
+            return json;
+        }
+        public static T EnsureJson<T>(string name) where T : new() {
+            T json;
+            string jsonPath = GetPath(name);
+
+            var options = new JsonSerializerOptions {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            };
+
+            if (File.Exists(jsonPath)) {
+                json = JsonSerializer.Deserialize<T>(File.ReadAllText(jsonPath), options);
+            } else {
+                json = new T();
+                string jsonString = JsonSerializer.Serialize(json, options);
+                File.WriteAllText(jsonPath, jsonString);
+            }
+
+            return json;
+        }
+        public static void SaveJson<T>(string name, T json) {
+            string jsonPath = GetPath(name);
+            var options = new JsonSerializerOptions {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            };
+            string jsonString = JsonSerializer.Serialize(json, options);
+            File.WriteAllText(jsonPath, jsonString);
+        }
+
         private class MacroBoard : ITile {
             public Mark Owner { get; set; } = Mark.None;
             public ITween<float> Scale { get; set; } = new FloatTween(0f, 1f, 1000, Easing.ElasticOut);
@@ -420,6 +469,8 @@ namespace GameProject {
         Vector2? _cursorKillXY = null;
         FloatTween _cursorKill;
         Color _cursorKillColor;
+
+        Settings _settings;
 
         static MacroBoard _board = new MacroBoard();
         public static int? ForcedMacro = null;

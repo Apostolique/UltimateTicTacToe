@@ -24,6 +24,8 @@ namespace GameProject {
         static readonly NetWriter _initialData = new NetWriter();
         static readonly NetReader _r = new NetReader();
 
+        public static bool HasPeer => _manager.ConnectedPeersCount > 0;
+
         static NetServer() {
             var packets = Enum.GetValues(typeof(Packets));
             _maxPacketId = packets.Length - 1;
@@ -48,9 +50,8 @@ namespace GameProject {
                 }
             };
             _listener.PeerConnectedEvent += peer => {
-                _initialData.Clear(0); {
-                    Send(_initialData, peer, 0, DeliveryMethod.ReliableOrdered);
-                }
+                _initialData.Clear(0);
+                Send(_initialData, peer, 0, DeliveryMethod.ReliableOrdered);
             };
             _listener.PeerDisconnectedEvent += (peer, disconnectInfo) => {};
             _listener.ConnectionRequestEvent += request => {

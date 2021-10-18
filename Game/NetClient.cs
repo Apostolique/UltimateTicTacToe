@@ -23,6 +23,8 @@ namespace GameProject {
         static readonly int _packetClearStartBits;
         static readonly NetReader _r = new NetReader();
 
+        public static bool HasPeer => _manager.ConnectedPeersCount > 0;
+
         static double _syncPlayersTimer;
 
         static NetClient() {
