@@ -16,6 +16,7 @@ namespace GameProject {
 
         public GameRoot() {
             _graphics = new GraphicsDeviceManager(this);
+            _graphics.GraphicsProfile = GraphicsProfile.HiDef;
             IsMouseVisible = true;
             Content.RootDirectory = "Content";
 
