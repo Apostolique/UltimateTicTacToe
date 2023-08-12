@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Apos.Input;
 using Apos.Shapes;
 using Apos.Tweens;
@@ -20,7 +21,7 @@ namespace GameProject {
             IsMouseVisible = true;
             Content.RootDirectory = "Content";
 
-            _settings = EnsureJson<Settings>("Settings.json");
+            _settings = EnsureJson<Settings>("Settings.json", SettingsContext.Default.Settings);
         }
 
         protected override void Initialize() {
@@ -52,7 +53,7 @@ namespace GameProject {
             if (KeyboardCondition.Pressed(Keys.Enter) && !NetClient.IsRunning) {
                 NetServer.Stop();
 
-                _settings = EnsureJson<Settings>("Settings.json");
+                _settings = EnsureJson<Settings>("Settings.json", SettingsContext.Default.Settings);
 
                 NetClient.Join(_settings.HostIp);
             }
@@ -265,47 +266,35 @@ namespace GameProject {
         }
 
         public static string GetPath(string name) => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, name);
-        public static T LoadJson<T>(string name)where T : new() {
+        public static T LoadJson<T>(string name, JsonTypeInfo<T> typeInfo) where T : new() {
             T json;
             string jsonPath = GetPath(name);
 
             if (File.Exists(jsonPath)) {
-                var options = new JsonSerializerOptions {
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                };
-                json = JsonSerializer.Deserialize<T>(File.ReadAllText(jsonPath), options);
+                json = JsonSerializer.Deserialize<T>(File.ReadAllText(jsonPath), typeInfo)!;
             } else {
                 json = new T();
             }
 
             return json;
         }
-        public static T EnsureJson<T>(string name)where T : new() {
+        public static T EnsureJson<T>(string name, JsonTypeInfo<T> typeInfo) where T : new() {
             T json;
             string jsonPath = GetPath(name);
 
-            var options = new JsonSerializerOptions {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                WriteIndented = true,
-            };
-
             if (File.Exists(jsonPath)) {
-                json = JsonSerializer.Deserialize<T>(File.ReadAllText(jsonPath), options);
+                json = JsonSerializer.Deserialize<T>(File.ReadAllText(jsonPath), typeInfo)!;
             } else {
                 json = new T();
-                string jsonString = JsonSerializer.Serialize(json, options);
+                string jsonString = JsonSerializer.Serialize(json, typeInfo);
                 File.WriteAllText(jsonPath, jsonString);
             }
 
             return json;
         }
-        public static void SaveJson<T>(string name, T json) {
+        public static void SaveJson<T>(string name, T json, JsonTypeInfo<T> typeInfo) {
             string jsonPath = GetPath(name);
-            var options = new JsonSerializerOptions {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                WriteIndented = true,
-            };
-            string jsonString = JsonSerializer.Serialize(json, options);
+            string jsonString = JsonSerializer.Serialize(json, typeInfo);
             File.WriteAllText(jsonPath, jsonString);
         }
 
