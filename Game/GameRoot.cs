@@ -21,7 +21,7 @@ namespace GameProject {
             IsMouseVisible = true;
             Content.RootDirectory = "Content";
 
-            _settings = EnsureJson<Settings>("Settings.json", SettingsContext.Default.Settings);
+            Settings = EnsureJson<Settings>("Settings.json", SettingsContext.Default.Settings);
         }
 
         protected override void Initialize() {
@@ -53,9 +53,9 @@ namespace GameProject {
             if (KeyboardCondition.Pressed(Keys.Enter) && !NetClient.IsRunning) {
                 NetServer.Stop();
 
-                _settings = EnsureJson<Settings>("Settings.json", SettingsContext.Default.Settings);
+                Settings = EnsureJson<Settings>("Settings.json", SettingsContext.Default.Settings);
 
-                NetClient.Join(_settings.HostIp);
+                NetClient.Join(Settings.HostIp);
             }
 
             DeltaTime = (float)gameTime.ElapsedGameTime.TotalSeconds;
@@ -470,7 +470,7 @@ namespace GameProject {
         FloatTween _cursorKill;
         Color _cursorKillColor;
 
-        Settings _settings;
+        public static Settings Settings;
 
         static MacroBoard _board = new MacroBoard();
         public static int? ForcedMacro = null;

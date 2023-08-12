@@ -53,7 +53,7 @@ namespace GameProject {
             Debug.Assert(!_manager.IsRunning);
             _manager.Start();
             var w = new NetDataWriter();
-            _manager.Connect(ip, NetServer.Port, w);
+            _manager.Connect(ip, GameRoot.Settings.Port, w);
         }
         public static void Stop() {
             _manager.Stop(true);
@@ -86,7 +86,7 @@ namespace GameProject {
 
         public static void Send(NetWriter writer, byte channel, DeliveryMethod deliveryMethod) => _manager.FirstPeer.Send(writer.Data, 0, writer.LengthBytes, channel, deliveryMethod);
 
-        static void InitialData(NetPeer peer, NetDataReader reader, DeliveryMethod deliveryMethod) {
+        static void InitialData(NetPeer peer, NetDataReader reader, byte channel, DeliveryMethod deliveryMethod) {
             _r.ReadFrom(reader);
             GameRoot.Reset();
             _manager.FirstPeer.Send(new byte[0], DeliveryMethod.ReliableSequenced);
@@ -94,7 +94,7 @@ namespace GameProject {
             _listener.NetworkReceiveEvent -= InitialData;
             _listener.NetworkReceiveEvent += OngoingData;
         }
-        static void OngoingData(NetPeer peer, NetDataReader reader, DeliveryMethod deliveryMethod) {
+        static void OngoingData(NetPeer peer, NetDataReader reader, byte channel, DeliveryMethod deliveryMethod) {
             _r.ReadFrom(reader);
             var p = (NetServer.Packets)_r.ReadInt(0, NetServer._maxPacketId);
             if (p == NetServer.Packets.SyncPlayer) {

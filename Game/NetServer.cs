@@ -5,7 +5,6 @@ using LiteNetLib;
 namespace GameProject {
     static class NetServer {
         const float SYNC_PLAYER_TIME = .01666666666f;
-        public const int Port = 6121;
 
         public static bool IsRunning => _manager.IsRunning;
         internal static readonly int _maxPacketId;
@@ -36,7 +35,7 @@ namespace GameProject {
                 _packetClearStart = w.Put(0, _maxPacketId, (int)p);
                 _packets.Add((int)p, w);
             }
-            _listener.NetworkReceiveEvent += (peer, readerOutdated, delieryMethod) => {
+            _listener.NetworkReceiveEvent += (peer, readerOutdated, channel, deliveryMethod) => {
                 if (readerOutdated.EndOfData) {
                     GameRoot.Reset();
                     _hasInitialData = true;
@@ -73,7 +72,7 @@ namespace GameProject {
         }
 
         public static void Host() {
-            _manager.Start(Port);
+            _manager.Start(GameRoot.Settings.Port);
             _initialData.Clear();
         }
         public static void Stop() {
