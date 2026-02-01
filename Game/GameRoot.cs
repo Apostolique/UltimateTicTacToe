@@ -47,8 +47,8 @@ namespace GameProject {
             InputHelper.UpdateSetup();
             TweenHelper.UpdateSetup(gameTime);
 
-            if (_quit.Pressed())
-                Exit();
+            // if (_quit.Pressed())
+            //     Exit();
 
             if (KeyboardCondition.Pressed(Keys.Enter) && !NetClient.IsRunning) {
                 NetServer.Stop();
