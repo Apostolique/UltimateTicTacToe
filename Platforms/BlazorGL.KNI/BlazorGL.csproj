@@ -13,6 +13,13 @@
 
   <PropertyGroup>
     <BlazorEnableTimeZoneSupport>false</BlazorEnableTimeZoneSupport>
+    <!-- The only culture the game names is `CultureInfo.InvariantCulture`, so the three
+         icu*.dat files can go. itch.io serves `.dat` with no compression at all, which made
+         them 1.1 MB of a first load. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Nothing reads the `.br` and `.gz` copies now that index.html doesn't, and they were
+         doubling the size of the push to itch. -->
+    <CompressionEnabled>false</CompressionEnabled>
   </PropertyGroup>
 
   <ItemGroup Condition=" '$(TargetFramework)' == 'net8.0' ">

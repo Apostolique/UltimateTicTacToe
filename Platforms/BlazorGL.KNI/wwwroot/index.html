@@ -28,38 +28,10 @@
         <a class="dismiss">x</a>
     </div>
 
-    <script src="_framework/blazor.webassembly.js" autostart="false"></script>
-    <script type="module">
-        import { BrotliDecode } from './js/decode.min.js';
-        window.BrotliDecode = BrotliDecode;
-        // Decode the .br copies in JS, because itch.io serves the build as stored and won't
-        // negotiate an encoding. Off for localhost below, so a dev build skips the decode.
-        // Worth it: 14.3 MB of framework becomes 3.7 MB on a first load.
-        var enableBrotliDecompression = true;
-        Blazor.start({
-            loadBootResource: function (type, name, defaultUri, integrity)
-            {
-                if (enableBrotliDecompression === true && type !== 'dotnetjs' && location.hostname !== 'localhost')
-                {
-                    return (async function()
-                    {
-                        const response = await fetch(defaultUri + '.br', { cache: 'no-cache' });
-                        if (!response.ok)
-                            throw new Error(response.statusText);
-                        const originalResponseBuffer = await response.arrayBuffer();
-                        const originalResponseArray = new Int8Array(originalResponseBuffer);
-                        const contentType = (type === 'dotnetwasm')
-                                          ? 'application/wasm'
-                                          : 'application/octet-stream';
-                        const decompressedResponseArray = BrotliDecode(originalResponseArray);
-                        return new Response(decompressedResponseArray,
-                                            { headers: { 'content-type': contentType }
-                                   });
-                    })();
-                }
-            }
-        });
-    </script>
+    <!-- Don't fetch the `.br` copies and decode them here. itch.io unpacks `.br` on the way
+         out and Cloudflare gzips whatever it serves, so the bytes arriving are already plain
+         and a second decode fails with "Corrupted padding bits". -->
+    <script src="_framework/blazor.webassembly.js"></script>
 
     <script src="_content/nkast.Wasm.JSInterop/js/JSObject.8.0.11.js"></script>
     <script src="_content/nkast.Wasm.Dom/js/Window.8.0.11.js"></script>
