@@ -8,37 +8,35 @@ on:
 env:
   ITCH_USER_NAME: apos
   ITCH_GAME_NAME: ultimatetictactoe
-  PROJECT_PATH: Platforms/DesktopGL
+  DESKTOP_PATH: Platforms/DesktopGL
+  WEB_PATH: Platforms/BlazorGL.KNI
 
 jobs:
   build:
 
     runs-on: ubuntu-latest
 
-    env:
-      MGFXC_WINE_PATH: /home/runner/.winemonogame
-
     steps:
-    - uses: actions/checkout@v2
-    - name: Setup .NET Core
-      uses: actions/setup-dotnet@v1
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '7.0.x'
+        # The desktop builds target net10.0; the KNI web build targets net8.0.
+        dotnet-version: |
+          8.0.x
+          10.0.x
     - name: Get version from tag
       run: |
         TAGVERSION=$(git describe --tags --abbrev=0)
         echo "TAGVERSION=${TAGVERSION:1}" >> $GITHUB_ENV
-    - name: Setup Wine
-      run: |
-        sudo apt update
-        sudo apt install wine64 p7zip-full
-        wget -qO- https://raw.githubusercontent.com/MonoGame/MonoGame/develop/Tools/MonoGame.Effect.Compiler/mgfxc_wine_setup.sh | sh
     - name: Build Windows
-      run: dotnet publish ${{ env.PROJECT_PATH }} -r win-x64 -c Release --output artifacts/windows --self-contained
+      run: dotnet publish ${{ env.DESKTOP_PATH }} -r win-x64 -c Release --output artifacts/windows --self-contained
     - name: Build Osx
-      run: dotnet publish ${{ env.PROJECT_PATH }} -r osx-x64 -c Release --output artifacts/osx --self-contained
+      run: dotnet publish ${{ env.DESKTOP_PATH }} -r osx-x64 -c Release --output artifacts/osx --self-contained
     - name: Build Linux
-      run: dotnet publish ${{ env.PROJECT_PATH }} -r linux-x64 -c Release --output artifacts/linux --self-contained
+      run: dotnet publish ${{ env.DESKTOP_PATH }} -r linux-x64 -c Release --output artifacts/linux --self-contained
+    - name: Build Web
+      run: dotnet publish ${{ env.WEB_PATH }} -c Release --output artifacts/web
     - name: Publish Windows build to itch.io
       uses: josephbmanley/butler-publish-itchio-action@master
       env:
@@ -65,4 +63,15 @@ jobs:
         ITCH_GAME: ${{ env.ITCH_GAME_NAME }}
         ITCH_USER: ${{ env.ITCH_USER_NAME }}
         PACKAGE: artifacts/linux
+        VERSION: ${{ env.TAGVERSION }}
+    # itch.io marks a build playable in the browser when the channel name says html,
+    # and it serves the index.html sitting at the root of the package.
+    - name: Publish Web build to itch.io
+      uses: josephbmanley/butler-publish-itchio-action@master
+      env:
+        BUTLER_CREDENTIALS: ${{ secrets.BUTLER_API_KEY }}
+        CHANNEL: html5
+        ITCH_GAME: ${{ env.ITCH_GAME_NAME }}
+        ITCH_USER: ${{ env.ITCH_USER_NAME }}
+        PACKAGE: artifacts/web/wwwroot
         VERSION: ${{ env.TAGVERSION }}

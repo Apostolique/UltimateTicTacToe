@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ultimatetictactoe-relay",
+  "main": "src/index.js",
+  "compatibility_date": "2026-01-01",
+  "observability": { "enabled": true },
+  "durable_objects": {
+    "bindings": [{ "name": "RELAY", "class_name": "Relay" }]
+  },
+  "migrations": [
+    {
+      // SQLite-backed classes are the ones available on the free plan. This object keeps its
+      // state in memory and never writes storage, but the backend still has to be declared.
+      "tag": "v1",
+      "new_sqlite_classes": ["Relay"]
+    }
+  ]
+}

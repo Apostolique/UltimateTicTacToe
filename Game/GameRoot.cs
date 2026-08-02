@@ -1,268 +1,202 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using Apos.Input;
 using Apos.Shapes;
 using Apos.Tweens;
-using LiteNetLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 
 namespace GameProject {
     public class GameRoot : Game {
-        public static float DeltaTime { get; private set; }
-        public static Vector2 MousePosition;
+        public static Settings Settings;
+
+        static readonly Board _board = new Board();
+
+        /// The network code drives the game through these, so a play that arrived over the
+        /// wire goes through the same path as one made here.
+        public static void MakePlay(int macro, int micro) => _board.TryPlay(macro, micro);
+        public static void Reset() => _board.Reset();
+
+        /// True while it's X's turn. The host plays X and the joiner plays O.
+        internal static bool _isPlayer1 => _board.Turn == Mark.X;
 
         public GameRoot() {
             _graphics = new GraphicsDeviceManager(this);
+#if KNI
+            _graphics.GraphicsProfile = GraphicsProfile.FL10_0;
+#else
             _graphics.GraphicsProfile = GraphicsProfile.HiDef;
+#endif
             IsMouseVisible = true;
             Content.RootDirectory = "Content";
 
+#if BLAZORGL
+            // No writable app directory in the browser, so the built in relay address stands.
+            Settings = new Settings();
+#else
             Settings = EnsureJson<Settings>("Settings.json", SettingsContext.Default.Settings);
+#endif
         }
 
         protected override void Initialize() {
             Window.AllowUserResizing = true;
 
-            _graphics.PreferredBackBufferWidth = 700;
-            _graphics.PreferredBackBufferHeight = 700;
+            _graphics.PreferredBackBufferWidth = 800;
+            _graphics.PreferredBackBufferHeight = 860;
             _graphics.ApplyChanges();
 
             base.Initialize();
         }
 
         protected override void LoadContent() {
-            _s = new SpriteBatch(GraphicsDevice);
-            _sb = new ShapeBatch(GraphicsDevice, Content);
+            _sb = new ShapeBatch(GraphicsDevice);
 
             InputHelper.Setup(this);
 
-            NetServer.Host();
+            using (var ttf = TitleContainer.OpenStream($"{Content.RootDirectory}/source-code-pro-medium.ttf")) {
+                _font = new ShapeFont(ttf);
+            }
         }
 
         protected override void Update(GameTime gameTime) {
             InputHelper.UpdateSetup();
             TweenHelper.UpdateSetup(gameTime);
 
-            // if (_quit.Pressed())
-            //     Exit();
+            Net.PollEvents();
 
-            if (KeyboardCondition.Pressed(Keys.Enter) && !NetClient.IsRunning) {
-                NetServer.Stop();
+            float width = GraphicsDevice.Viewport.Width;
+            float height = GraphicsDevice.Viewport.Height;
+            var layout = BoardLayout.Fit(width, height);
 
-                Settings = EnsureJson<Settings>("Settings.json", SettingsContext.Default.Settings);
+            Vector2 mouse = InputHelper.NewMouse.Position.ToVector2();
+            bool clicked = _playerClick.Pressed();
 
-                NetClient.Join(Settings.HostIp);
-            }
+            _onlineButton = OnlineButtonBounds(layout);
+            _onlineHovered = !_lobby.IsOpen && _onlineButton.Contains(mouse);
 
-            DeltaTime = (float)gameTime.ElapsedGameTime.TotalSeconds;
+            _lobby.Update(width, height, mouse, clicked);
 
-            NetServer.PollEvents();
-            NetClient.PollEvents();
+            (int Macro, int Micro)? hovered = null;
+            if (!_lobby.IsOpen) {
+                if (_toggleLobby.Pressed()) {
+                    _lobby.Toggle();
+                } else if (clicked && _onlineHovered) {
+                    _lobby.Open();
+                } else {
+                    hovered = PlayTurn(layout, mouse, clicked);
+                }
 
-            if (_isPlayer1 && NetServer.IsRunning || !_isPlayer1 && NetClient.IsRunning || !NetServer.HasPeer && !NetClient.HasPeer) {
-                MousePosition = InputHelper.NewMouse.Position.ToVector2();
-                if (_playerClick.Pressed()) {
-                    var v = WorldToMicroBoard(MousePosition);
-                    if (v != null && (ForcedMacro == null || ForcedMacro.Value == v.Value.X) && _board.IsAvailable(v.Value.X, v.Value.Y)) {
-                        if (NetServer.IsRunning) {
-                            var w = NetServer.CreatePacket(NetServer.Packets.MakePlay);
-                            w.Put(0, 8, v.Value.X);
-                            w.Put(0, 8, v.Value.Y);
-                            NetServer.SendToAll(w, 0, DeliveryMethod.ReliableOrdered);
-                        } else if (NetClient.IsRunning) {
-                            var w = NetClient.CreatePacket(NetClient.Packets.MakePlay);
-                            w.Put(0, 8, v.Value.X);
-                            w.Put(0, 8, v.Value.Y);
-                            NetClient.Send(w, 0, DeliveryMethod.ReliableOrdered);
-                        }
-                        MakePlay(v.Value.X, v.Value.Y);
-                    }
+                if (_reset.Pressed()) {
+                    Net.SendReset();
+                    Reset();
                 }
             }
 
-            if (_reset.Pressed()) {
-                if (NetServer.IsRunning) {
-                    var w = NetServer.CreatePacket(NetServer.Packets.ResetGame);
-                    NetServer.SendToAll(w, 0, DeliveryMethod.ReliableOrdered);
-                } else if (NetClient.IsRunning) {
-                    var w = NetClient.CreatePacket(NetClient.Packets.ResetGame);
-                    NetClient.Send(w, 0, DeliveryMethod.ReliableOrdered);
-                }
-                Reset();
-            }
+            _view.SetCursor(hovered, _board.Turn, layout);
+            _view.Sync(_board);
 
             InputHelper.UpdateCleanup();
             base.Update(gameTime);
         }
 
+        /// <summary>Returns the cell to preview, which is the opponent's when it's their go.</summary>
+        (int Macro, int Micro)? PlayTurn(BoardLayout layout, Vector2 mouse, bool clicked) {
+            if (!Net.IsLocalTurn(_isPlayer1)) {
+                // Their pointer arrives as a cell, so it lands in the right square whatever
+                // size their window is. Re-check it: a stale one can outlive its own move.
+                var remote = Net.RemoteHover;
+                return remote != null && _board.IsPlayable(remote.Value.Macro, remote.Value.Micro) ? remote : null;
+            }
+
+            var cell = layout.Pick(mouse);
+            if (cell == null || !_board.IsPlayable(cell.Value.Macro, cell.Value.Micro)) {
+                Net.SendHover(null);
+                return null;
+            }
+
+            Net.SendHover(cell);
+            if (!clicked) return cell;
+
+            Net.SendPlay(cell.Value.Macro, cell.Value.Micro);
+            MakePlay(cell.Value.Macro, cell.Value.Micro);
+            // That square is taken now, so nothing is previewed until the mouse moves.
+            return null;
+        }
+
         protected override void Draw(GameTime gameTime) {
-            GraphicsDevice.Clear(Color.Black);
+            GraphicsDevice.Clear(BoardView.Background);
+
+            float width = GraphicsDevice.Viewport.Width;
+            float height = GraphicsDevice.Viewport.Height;
+            var layout = BoardLayout.Fit(width, height);
 
             _sb.Begin();
-            DrawPlayerIndicator();
-
-            _board.Draw(_sb);
-
-            Color c = _isPlayer1 ? TWColor.Red300 : TWColor.Blue300;
-            var v = WorldToMicroBoard(MousePosition);
-            if (v != null && (ForcedMacro == null || ForcedMacro.Value == v.Value.X) && _board.IsAvailable(v.Value.X, v.Value.Y)) {
-                bool isCreated = _cursor == null;
-                Vector2? oldCursor = _cursor;
-                _cursor = CoordinateToWorld(v.Value.X, v.Value.Y);
-                _cursorPlayer = _isPlayer1;
-
-                if (isCreated) {
-                    if (_cursorKillXY != null) {
-                        _cursorCreate = new FloatTween(_cursorKill.Value, 1f, 800, Easing.SineInOut);
-                        _cursorMotion = new Vector2Tween(_cursorKillXY.Value, _cursor.Value, 800, Easing.BounceOut);
-                        _cursorKillXY = null;
-                    } else {
-                        _cursorCreate = new FloatTween(0f, 1f, 800, Easing.ElasticOut);
-                        _cursorMotion = new WaitTween<Vector2>(_cursor.Value, 0);
-                    }
-                }
-
-                if (_cursor != oldCursor) {
-                    _cursorMotion = new Vector2Tween(_cursorMotion.Value, _cursor.Value, 800, Easing.BounceOut);
-                }
-
-                _sb.DrawCircle(_cursorMotion.Value, 10f * _cursorCreate.Value, c, TWColor.Black, 2f);
-            } else if (_cursor != null) {
-                if (_cursorPlayer == _isPlayer1) {
-                    _cursorKillXY = _cursor;
-                    _cursorKill = new FloatTween(1f, 0f, 400, Easing.BackIn);
-                    _cursorKillColor = c;
-                }
-                _cursor = null;
-            }
-            if (_cursorKillXY != null) {
-                _sb.DrawCircle(_cursorKillXY.Value, 10f * _cursorKill.Value, _cursorKillColor, TWColor.Black, 2f);
-
-                if (_cursorKill.Value == 0f) {
-                    _cursorKillXY = null;
-                }
-            }
+            _view.Draw(_sb, _font, _board, layout);
+            DrawHud(layout);
+            _lobby.Draw(_sb, _font, width, height);
             _sb.End();
 
             base.Draw(gameTime);
         }
 
-        public static void Reset() {
-            _board = new MacroBoard();
-            ForcedMacro = null;
-            _isPlayer1 = true;
+        Lobby.Bounds OnlineButtonBounds(BoardLayout layout) {
+            string label = OnlineLabel();
+            float size = 15f;
+            float w = _font.MeasureString(label, size).X + 24f;
+            return new Lobby.Bounds(
+                new Vector2(layout.Origin.X + layout.Size - w, (BoardLayout.HudHeight - 28f) / 2f),
+                new Vector2(w, 28f));
         }
 
-        public static void DrawX(ShapeBatch sb, Vector2 xy, Vector2 size, float scale) {
-            sb.DrawLine(xy - (size / 2f) * scale, xy + (size / 2f) * scale, 8f * scale, TWColor.White, TWColor.Red500, 4f * scale);
-            sb.DrawLine(xy + new Vector2(-size.X / 2f, size.Y / 2f) * scale, xy + new Vector2(size.X / 2f, -size.Y / 2f) * scale, 8f * scale, TWColor.White, TWColor.Red500, 4f * scale);
-            sb.FillLine(xy - (size / 2f) * scale, xy + (size / 2f) * scale, 4f * scale, TWColor.White);
-        }
-        public static void DrawO(ShapeBatch sb, Vector2 xy, float size, float scale) {
-            sb.BorderCircle(xy, (size / 2f) * scale, TWColor.Blue500, 4f * scale);
-            sb.BorderCircle(xy, (size / 2f - 4f) * scale, TWColor.White, 8f * scale);
-            sb.BorderCircle(xy, (size / 2f - 12f) * scale, TWColor.Blue500, 4f * scale);
-        }
-        private void DrawPlayerIndicator() {
-            Color c = _isPlayer1 ? TWColor.Red500 : TWColor.Blue500;
-            _sb.DrawRectangle(new Vector2(10, 10), new Vector2(30, 30), c, TWColor.White, 2f);
-        }
-        public static void DrawBoard(ShapeBatch sb, Vector2 offset, float spacing, Color c) {
-            for (int i = 1; i <= 2; i++) {
-                sb.FillLine(new Vector2(offset.X + i * spacing, offset.Y), new Vector2(offset.X + i * spacing, offset.Y + spacing * 3f), 4f, c);
-                sb.FillLine(new Vector2(offset.X, offset.Y + i * spacing), new Vector2(offset.X + spacing * 3f, offset.Y + i * spacing), 4f, c);
-            }
-        }
+        string OnlineLabel() => Net.Status switch {
+            Net.Mode.Connecting => "connecting...",
+            Net.Mode.Waiting => Net.IsHost ? $"code {Net.Code}" : $"waiting {Net.Code}",
+            Net.Mode.Searching => "searching...",
+            Net.Mode.Playing => Net.IsHost ? $"{Net.Code} - you are X" : $"{Net.Code} - you are O",
+            _ => "play online",
+        };
 
-        private int? WorldToMacroBoard(Vector2 xy) {
-            if (
-                xy.X <= MacroOffset.X ||
-                xy.X >= MacroOffset.X + MacroSize * 3f ||
-                xy.Y <= MacroOffset.Y ||
-                xy.Y >= MacroOffset.Y + MacroSize * 3f) {
-                return null;
+        void DrawHud(BoardLayout layout) {
+            const float size = 19f;
+            const float swatch = 26f;
+            float y = (BoardLayout.HudHeight - swatch) / 2f;
+            var origin = new Vector2(layout.Origin.X, y);
+
+            Color c = _board.Turn == Mark.X ? TWColor.Red500 : TWColor.Blue500;
+            string status = _board.Winner switch {
+                Mark.X => "X wins",
+                Mark.O => "O wins",
+                _ => _board.IsDraw ? "Draw" : _board.Turn == Mark.X ? "X to play" : "O to play",
+            };
+            if (Net.HasPeer && !_board.IsOver) {
+                status += Net.IsLocalTurn(_isPlayer1) ? " - your turn" : " - their turn";
             }
 
-            var macroX = (int)MathF.Floor((xy.X - MacroOffset.X) / MacroSize);
-            var macroY = (int)MathF.Floor((xy.Y - MacroOffset.Y) / MacroSize);
-
-            return macroY * 3 + macroX;
-        }
-        public static(int X, int Y) ? WorldToMicroBoard(Vector2 xy) {
-            if (
-                xy.X <= MacroOffset.X ||
-                xy.X >= MacroOffset.X + MacroSize * 3f ||
-                xy.Y <= MacroOffset.Y ||
-                xy.Y >= MacroOffset.Y + MacroSize * 3f) {
-                return null;
+            if (!_board.IsOver) {
+                _sb.DrawRectangle(origin, new Vector2(swatch), c, TWColor.Gray200, 2f, 6f);
             }
 
-            var macroX = (int)MathF.Floor((xy.X - MacroOffset.X) / MacroSize);
-            var macroY = (int)MathF.Floor((xy.Y - MacroOffset.Y) / MacroSize);
+            // DrawString takes the top left of the line, so center the label against the swatch
+            // by its own line height rather than guessing at an offset.
+            float textY = y + (swatch - _font.LineHeight * size) / 2f;
+            _sb.DrawString(_font, status,
+                new Vector2(origin.X + (_board.IsOver ? 0f : swatch + 12f), textY), size, TWColor.Gray100);
 
-            var microX = (int)MathHelper.Clamp(MathF.Floor((xy.X - FullOffset.X - macroX * MacroSize) / MicroSize), 0, 2);
-            var microY = (int)MathHelper.Clamp(MathF.Floor((xy.Y - FullOffset.Y - macroY * MacroSize) / MicroSize), 0, 2);
+            string label = OnlineLabel();
+            const float labelSize = 15f;
+            Color fill = Net.HasPeer ? TWColor.Emerald900 : Net.IsOnline ? TWColor.Blue900 : TWColor.Gray800;
+            Color border = Net.HasPeer ? TWColor.Emerald600 : Net.IsOnline ? TWColor.Blue600 : TWColor.Gray600;
+            if (_onlineHovered) fill = TWColor.Gray700;
 
-            return (macroY * 3 + macroX, microY * 3 + microX);
-        }
-        private Vector2 CoordinateToWorld(int x) {
-            int macroX = x % 3;
-            int macroY = x / 3;
-
-            return new Vector2(MacroOffset.X + macroX * MacroSize + MacroSize / 2f, MacroOffset.Y + macroY * MacroSize + MacroSize / 2f);
-        }
-        private Vector2 CoordinateToWorld(int x, int y) {
-            int macroX = x % 3;
-            int macroY = x / 3;
-
-            int microX = y % 3;
-            int microY = y / 3;
-
-            return new Vector2(FullOffset.X + macroX * MacroSize + microX * MicroSize + MicroSize / 2f, FullOffset.Y + macroY * MacroSize + microY * MicroSize + MicroSize / 2f);
-        }
-
-        public static Mark Validate(ITile[] tiles) {
-            // Horizontal line
-            for (int i = 0; i < 3; i++) {
-                if (IsSame(tiles[i * 3], tiles[i * 3 + 1], tiles[i * 3 + 2])) {
-                    return tiles[i * 3].Owner;
-                }
-            }
-
-            // Vertical line
-            for (int i = 0; i < 3; i++) {
-                if (IsSame(tiles[i], tiles[i + 3], tiles[i + 6])) {
-                    return tiles[i].Owner;
-                }
-            }
-
-            // Diagonal lines
-            if (IsSame(tiles[0], tiles[4], tiles[8])) {
-                return tiles[0].Owner;
-            } else if (IsSame(tiles[2], tiles[4], tiles[6])) {
-                return tiles[2].Owner;
-            }
-
-            return Mark.None;
-        }
-        public static bool IsSame(ITile a, ITile b, ITile c) {
-            return a.Owner != Mark.None && a.Owner == b.Owner && b.Owner == c.Owner;
-        }
-
-        public static void MakePlay(int x, int y) {
-            Mark m = _isPlayer1 ? Mark.X : Mark.O;
-            _board.Capture(x, y, m);
-            _isPlayer1 = !_isPlayer1;
-
-            if (_board.IsAvailable(y)) {
-                ForcedMacro = y;
-            } else {
-                ForcedMacro = null;
-            }
+            _sb.FillRectangle(_onlineButton.XY, _onlineButton.Size, fill, 8f);
+            _sb.BorderRectangle(_onlineButton.XY, _onlineButton.Size, border, 1.5f, 8f);
+            _sb.DrawString(_font, label,
+                new Vector2(_onlineButton.XY.X + 12f,
+                            _onlineButton.XY.Y + (_onlineButton.Size.Y - _font.LineHeight * labelSize) / 2f),
+                labelSize, TWColor.Gray200);
         }
 
         public static string GetPath(string name) => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, name);
@@ -298,188 +232,18 @@ namespace GameProject {
             File.WriteAllText(jsonPath, jsonString);
         }
 
-        private class MacroBoard : ITile {
-            public Mark Owner { get; set; } = Mark.None;
-            public ITween<float> Scale { get; set; } = new FloatTween(0f, 1f, 1000, Easing.ElasticOut);
-            public Color OldColor { get; set; } = TWColor.Black;
-            public Color OppositeColor { get; set; } = TWColor.Black;
-            public Color NewColor { get; set; } = TWColor.Black;
-            public FloatTween ColorTween { get; set; }
-
-            public void Capture(int x, int y, Mark player) {
-                _tiles[x].Capture(y, player);
-                Owner = Validate(_tiles);
-
-                if (Owner != Mark.None) {
-                    Scale = new WaitTween<float>(0f, 400).To(1f, 1000, Easing.ElasticOut);
-                }
-            }
-
-            public bool IsAvailable(int x) {
-                return Owner == Mark.None && _tiles[x].Owner == Mark.None;
-            }
-
-            public bool IsAvailable(int x, int y) {
-                return Owner == Mark.None && _tiles[x].Owner == Mark.None && _tiles[x].IsAvailable(y);
-            }
-
-            public void Draw(ShapeBatch sb) {
-                bool isActive = Owner == Mark.None;
-                OppositeColor = !isActive ? TWColor.White : TWColor.Gray600;
-                NewColor = isActive ? TWColor.White : TWColor.Gray600;
-
-                if (NewColor != OldColor) {
-                    OldColor = NewColor;
-                    ColorTween = new FloatTween(0f, 1f, 200, Easing.CircInOut);
-                }
-
-                DrawBoard(sb, MacroOffset, MacroSize, Color.Lerp(OppositeColor, NewColor, ColorTween.Value));
-
-                for (int i = 0; i < _tiles.Length; i++) {
-                    int macroX = i % 3;
-                    int macroY = i / 3;
-
-                    _tiles[i].Draw(sb, i, macroX, macroY, IsAvailable(i));
-                }
-
-                DrawTiles(sb);
-            }
-
-            private void DrawTiles(ShapeBatch sb) {
-                for (int i = 0; i < _tiles.Length; i++) {
-                    int macroX = i % 3;
-                    int macroY = i / 3;
-
-                    _tiles[i].DrawTiles(sb, macroX, macroY);
-
-                    Vector2 center = new Vector2(MacroOffset.X + macroX * MacroSize + MacroSize / 2f, MacroOffset.Y + macroY * MacroSize + MacroSize / 2f);
-
-                    if (_tiles[i].Owner == Mark.X) {
-                        DrawX(sb, center, new Vector2(MacroSize - 32f, MacroSize - 32f), _tiles[i].Scale.Value);
-                    } else if (_tiles[i].Owner == Mark.O) {
-                        DrawO(sb, center, MacroSize - 16f, _tiles[i].Scale.Value);
-                    }
-                }
-
-                Vector2 boardCenter = new Vector2(MacroOffset.X + MacroSize * 3f / 2f, MacroOffset.Y + MacroSize * 3f / 2f);
-                if (Owner == Mark.X) {
-                    DrawX(sb, boardCenter, new Vector2(MacroSize * 3f - 32, MacroSize * 3f - 32), Scale.Value);
-                } else if (Owner == Mark.O) {
-                    DrawO(sb, boardCenter, MacroSize * 3f - 16, Scale.Value);
-                }
-            }
-
-            MicroBoard[] _tiles = new MicroBoard[9] {
-                new MicroBoard(), new MicroBoard(), new MicroBoard(),
-                new MicroBoard(), new MicroBoard(), new MicroBoard(),
-                new MicroBoard(), new MicroBoard(), new MicroBoard(),
-            };
-        }
-
-        private class MicroBoard : ITile {
-            public Mark Owner { get; set; } = Mark.None;
-            public ITween<float> Scale { get; set; }
-            public Color OldColor { get; set; } = TWColor.Black;
-            public Color OppositeColor { get; set; } = TWColor.Black;
-            public Color NewColor { get; set; } = TWColor.Black;
-            public FloatTween ColorTween { get; set; }
-
-            public void Capture(int index, Mark player) {
-                _tiles[index].Owner = player;
-                _tiles[index].Scale = new FloatTween(0f, 1f, 1000, Easing.ElasticOut);
-                Owner = Validate(_tiles);
-
-                if (Owner != Mark.None) {
-                    Scale = new WaitTween<float>(0f, 200).To(1f, 1000, Easing.ElasticOut);
-                }
-            }
-
-            public bool IsAvailable(int index) {
-                return _tiles[index].Owner == Mark.None;
-            }
-
-            public void Draw(ShapeBatch sb, int index, int macroX, int macroY, bool isAvailable) {
-                bool isActive = (ForcedMacro == null || ForcedMacro.Value == index) && isAvailable;
-                OppositeColor = !isActive ? TWColor.White : TWColor.Gray600;
-                NewColor = isActive ? TWColor.White : TWColor.Gray600;
-
-                if (NewColor != OldColor) {
-                    OldColor = NewColor;
-                    ColorTween = new FloatTween(0f, 1f, 200, Easing.CircInOut);
-                }
-
-                DrawBoard(sb, new Vector2(FullOffset.X + macroX * MacroSize, FullOffset.Y + macroY * MacroSize), MicroSize, Color.Lerp(OppositeColor, NewColor, ColorTween.Value));
-            }
-
-            public void DrawTiles(ShapeBatch sb, int macroX, int macroY) {
-                for (int i = 0; i < _tiles.Length; i++) {
-                    int x = i % 3;
-                    int y = i / 3;
-
-                    Vector2 center = new Vector2(FullOffset.X + macroX * MacroSize + x * MicroSize + MicroSize / 2f, FullOffset.Y + macroY * MacroSize + y * MicroSize + MicroSize / 2f);
-
-                    if (_tiles[i].Owner == Mark.X) {
-                        DrawX(sb, center, new Vector2(MicroSize - 32f, MicroSize - 32f), _tiles[i].Scale.Value);
-                    } else if (_tiles[i].Owner == Mark.O) {
-                        DrawO(sb, center, MicroSize - 16f, _tiles[i].Scale.Value);
-                    }
-                }
-            }
-
-            Tile[] _tiles = new Tile[9] {
-                new Tile(), new Tile(), new Tile(),
-                new Tile(), new Tile(), new Tile(),
-                new Tile(), new Tile(), new Tile()
-            };
-        }
-
-        private class Tile : ITile {
-            public Mark Owner { get; set; } = Mark.None;
-            public ITween<float> Scale { get; set; } = new FloatTween(0f, 1f, 1000, Easing.ElasticOut);
-        }
-
-        public interface ITile {
-            Mark Owner { get; set; }
-            ITween<float> Scale { get; set; }
-        }
-
-        public enum Mark {
-            None,
-            X,
-            O
-        }
-
         GraphicsDeviceManager _graphics;
-        SpriteBatch _s;
         ShapeBatch _sb;
+        ShapeFont _font;
 
-        ICondition _quit =
-            new AnyCondition(
-                new KeyboardCondition(Keys.Escape),
-                new GamePadCondition(GamePadButton.Back, 0)
-            );
+        readonly BoardView _view = new BoardView();
+        readonly Lobby _lobby = new Lobby();
+
+        Lobby.Bounds _onlineButton;
+        bool _onlineHovered;
+
         ICondition _playerClick = new MouseCondition(MouseButton.LeftButton);
         ICondition _reset = new KeyboardCondition(Keys.R);
-
-        Vector2? _cursor = null;
-        bool _cursorPlayer;
-        FloatTween _cursorCreate;
-        ITween<Vector2> _cursorMotion;
-
-        Vector2? _cursorKillXY = null;
-        FloatTween _cursorKill;
-        Color _cursorKillColor;
-
-        public static Settings Settings;
-
-        static MacroBoard _board = new MacroBoard();
-        public static int? ForcedMacro = null;
-
-        internal static bool _isPlayer1 = true;
-        public static float MacroSize = 200f;
-        public static float MicroSize = 200f / 4f;
-        public static Vector2 MacroOffset = new Vector2(50, 50);
-        public static Vector2 MicroOffset = new Vector2(25, 25);
-        public static Vector2 FullOffset = new Vector2(75, 75);
+        ICondition _toggleLobby = new KeyboardCondition(Keys.Tab);
     }
 }

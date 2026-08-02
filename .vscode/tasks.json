@@ -9,7 +9,7 @@
                 "build",
                 "${workspaceFolder}/Platforms/DesktopGL/DesktopGL.csproj"
             ],
-            "problemMatcher": "$tsc"
+            "problemMatcher": "$msCompile"
         },
         {
             "label": "buildWindowsDX",
@@ -19,7 +19,37 @@
                 "build",
                 "${workspaceFolder}/Platforms/WindowsDX/WindowsDX.csproj"
             ],
-            "problemMatcher": "$tsc"
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "buildDesktopGLKNI",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "build",
+                "${workspaceFolder}/Platforms/DesktopGL.KNI/DesktopGL.csproj"
+            ],
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "buildWindowsDXKNI",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "build",
+                "${workspaceFolder}/Platforms/WindowsDX.KNI/WindowsDX.csproj"
+            ],
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "buildBlazorGL",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "build",
+                "${workspaceFolder}/Platforms/BlazorGL.KNI/BlazorGL.csproj"
+            ],
+            "problemMatcher": "$msCompile"
         },
         {
             "label": "publishDesktopGL",
@@ -27,11 +57,11 @@
             "type": "process",
             "args": [
                 "publish",
-                "${workspaceFolder}/DesktopGL/DesktopGL.csproj",
+                "${workspaceFolder}/Platforms/DesktopGL/DesktopGL.csproj",
                 "-c",
                 "Release"
             ],
-            "problemMatcher": "$tsc"
+            "problemMatcher": "$msCompile"
         },
         {
             "label": "publishWindowsDX",
@@ -39,11 +69,36 @@
             "type": "process",
             "args": [
                 "publish",
-                "${workspaceFolder}/WindowsDX/WindowsDX.csproj",
+                "${workspaceFolder}/Platforms/WindowsDX/WindowsDX.csproj",
                 "-c",
                 "Release"
             ],
-            "problemMatcher": "$tsc"
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "publishWeb",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "publish",
+                "${workspaceFolder}/Platforms/BlazorGL.KNI/BlazorGL.csproj",
+                "-c",
+                "Release",
+                "--output",
+                "${workspaceFolder}/artifacts/web"
+            ],
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "runWeb",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "run",
+                "--project",
+                "${workspaceFolder}/Platforms/BlazorGL.KNI/BlazorGL.csproj"
+            ],
+            "problemMatcher": "$msCompile"
         },
         {
             "label": "watch",
@@ -52,9 +107,10 @@
             "args": [
                 "watch",
                 "run",
-                "${workspaceFolder}/DesktopGL/DesktopGL.csproj"
+                "--project",
+                "${workspaceFolder}/Platforms/DesktopGL/DesktopGL.csproj"
             ],
-            "problemMatcher": "$tsc"
+            "problemMatcher": "$msCompile"
         }
     ]
 }

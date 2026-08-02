@@ -64,3 +64,13 @@ monodroid*.msi
 
 apos-docs/
 artifacts/
+
+# The KNI content build writes into the Blazor host's wwwroot.
+**/wwwroot/Content/*
+
+# Relay server
+node_modules/
+.wrangler/
+# Wrangler's local secrets, which are not the kind of thing that belongs in a repo.
+.dev.vars
+.dev.vars.*

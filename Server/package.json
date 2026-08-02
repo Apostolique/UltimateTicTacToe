@@ -1,0 +1,14 @@
+{
+  "name": "ultimatetictactoe-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WebSocket relay that pairs Ultimate Tic-Tac-Toe players and forwards their moves.",
+  "scripts": {
+    "dev": "wrangler dev --port 8090",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4.118.0"
+  }
+}

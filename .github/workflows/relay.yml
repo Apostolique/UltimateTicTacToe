@@ -1,0 +1,31 @@
+name: Deploy relay
+
+# The game and the relay ship on their own clocks: the relay only changes when its protocol
+# does, which is rarely, so it deploys off its own folder instead of riding a game tag.
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Server/**'
+      - '.github/workflows/relay.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Server
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: npm
+        cache-dependency-path: Server/package-lock.json
+    - run: npm ci
+    # Needs a CLOUDFLARE_API_TOKEN secret with the "Edit Cloudflare Workers" template.
+    - run: npx wrangler deploy
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
