@@ -10,9 +10,16 @@
     <PublishTrimmed>true</PublishTrimmed>
     <PublishReadyToRun>false</PublishReadyToRun>
     <TieredCompilation>false</TieredCompilation>
-    <RuntimeIdentifiers>win-x64;linux-x64;osx-x64</RuntimeIdentifiers>
+    <RuntimeIdentifiers>win-x64;linux-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
     <NoBeautyFlag>True</NoBeautyFlag>
     <BeautyExcludes>SDL2*;libSDL2*;sdl2*;soft_oal*;openal*;MonoGame.Framework*</BeautyExcludes>
+  </PropertyGroup>
+
+  <!-- A .app bundle hides its own contents, so there's nothing to tidy away on
+       macOS. Skipping it also leaves the host and the runtime dylibs with the
+       signatures they shipped with, which Apple Silicon refuses to run without. -->
+  <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('osx'))">
+    <DisableBeauty>True</DisableBeauty>
   </PropertyGroup>
 
   <ItemGroup>
@@ -32,7 +39,7 @@
   <!-- Nothing here needs building: Apos.Shapes reads the font's outlines itself, so the file
        is copied as-is and the content pipeline stays out of it. -->
   <ItemGroup>
-    <Content Include="../../Content/**/*.ttf" CopyToOutputDirectory="PreserveNewest">
+    <Content Include="../../Content/**/*.ttf" Exclude="../../Content/bin/**;../../Content/obj/**" CopyToOutputDirectory="PreserveNewest">
       <Link>Content/%(RecursiveDir)%(Filename)%(Extension)</Link>
     </Content>
   </ItemGroup>

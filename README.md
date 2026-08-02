@@ -69,9 +69,22 @@ In vscode, you can debug by pressing F5. There's a launch configuration per plat
 
 ```
 dotnet publish Platforms/DesktopGL -c Release -r win-x64 --output artifacts/build-windows
-dotnet publish Platforms/DesktopGL -c Release -r osx-x64 --output artifacts/build-osx
 dotnet publish Platforms/DesktopGL -c Release -r linux-x64 --output artifacts/build-linux
 ```
+
+macOS ships as an `.app` bundle instead, built by a script that has to run on a Mac:
+
+```
+./Platforms/DesktopGL/package-osx.sh 2.0.0 artifacts/osx
+```
+
+The bundle carries a full tree per architecture and a shell launcher that picks
+between them, because a self-contained .NET app ships framework assemblies compiled
+per architecture and `lipo` can't merge those. Every Mach-O in it gets ad-hoc signed,
+which is the part that can't happen anywhere but macOS: Apple Silicon kills any
+process whose images aren't signed, so an unsigned build is one that never starts.
+The publish also turns NetCoreBeauty off for `osx-*`, since it patches `hostfxr` and
+a patched Mach-O is an invalid one.
 
 ```
 dotnet publish Platforms/WindowsDX -c Release -r win-x64 --output artifacts/build-windowsdx
@@ -84,8 +97,23 @@ folder is what you upload to itch.io:
 dotnet publish Platforms/BlazorGL.KNI -c Release --output artifacts/web
 ```
 
-Pushing a `v*` tag runs all four and sends them to itch.io on the `windows`, `osx`,
-`linux`, and `html5` channels.
+Pushing a `v*` tag builds all four and sends them to itch.io on the `windows`, `osx`,
+`linux`, and `html5` channels. The macOS build runs on its own macOS runner and hands
+the bundle back to Linux to be pushed, because the butler action is a Docker one and
+GitHub only runs those on Linux.
+
+## Icons
+
+Every icon comes out of one script, so the six of them can't drift apart:
+
+```
+python Tools/make-icons.py
+```
+
+It writes the `.ico` for each platform, the `.icns` for the macOS bundle, the `.bmp`
+SDL wants for its window icon, and the favicon. Each size is drawn at its own detail
+level rather than resampled from one master, so the nested grid that reads at 256 px
+doesn't smear the 16 px one.
 
 ## Multiplayer
 

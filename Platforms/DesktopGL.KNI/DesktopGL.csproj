@@ -54,10 +54,12 @@
     </Compile>
   </ItemGroup>
 
+  <!-- Nothing here needs building: Apos.Shapes reads the font's outlines itself, so the file
+       is copied as-is. The KNI pipeline shells out to MGCB.exe, which doesn't exist on Linux. -->
   <ItemGroup>
-    <KniContentReference Include="../../Content/**/*.mgcb">
+    <Content Include="../../Content/**/*.ttf" Exclude="../../Content/bin/**;../../Content/obj/**" CopyToOutputDirectory="PreserveNewest">
       <Link>Content/%(RecursiveDir)%(Filename)%(Extension)</Link>
-    </KniContentReference>
+    </Content>
   </ItemGroup>
 
 </Project>

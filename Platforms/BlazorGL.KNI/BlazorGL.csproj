@@ -50,10 +50,14 @@
     </Compile>
   </ItemGroup>
 
+  <!-- Nothing here needs building: Apos.Shapes reads the font's outlines itself, so the file
+       is served as-is. The KNI pipeline shells out to MGCB.exe, which doesn't exist on the
+       Linux runner that publishes this. Linking it under wwwroot makes it a static web asset,
+       which is what puts it where TitleContainer looks for it. -->
   <ItemGroup>
-    <KniContentReference Include="../../Content/**/*.mgcb">
-      <Link>Content/%(RecursiveDir)%(Filename)%(Extension)</Link>
-    </KniContentReference>
+    <Content Include="../../Content/**/*.ttf" Exclude="../../Content/bin/**;../../Content/obj/**">
+      <Link>wwwroot/Content/%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Content>
   </ItemGroup>
 
 </Project>
