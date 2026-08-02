@@ -42,9 +42,14 @@
     <Compile Include="Program.cs" />
   </ItemGroup>
 
+  <!-- SDL looks the window icon up as "UltimateTicTacToe.Icon.bmp", then "Icon.bmp". The
+       default resource name is "GameProject.Icon.bmp", after RootNamespace, which matches
+       neither, so without LogicalName the window shows KNI's logo. -->
   <ItemGroup>
-    <EmbeddedResource Include="Icon.ico" />
-    <EmbeddedResource Include="Icon.bmp" />
+    <EmbeddedResource Include="Icon.bmp">
+      <LogicalName>Icon.bmp</LogicalName>
+    </EmbeddedResource>
+    <None Include="Icon.ico" />
     <None Include="app.manifest" />
   </ItemGroup>
 

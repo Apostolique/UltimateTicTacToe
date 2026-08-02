@@ -193,9 +193,11 @@ def main():
     # onto the same background the plate already uses.
     bmp = Image.new("RGB", (128, 128), GRAY_900[:3])
     bmp.paste(sizes[128], (0, 0), sizes[128])
-    bmp_out = ROOT / "Platforms/DesktopGL.KNI/Icon.bmp"
-    bmp.save(bmp_out, format="BMP")
-    print(f"{'Platforms/DesktopGL.KNI/Icon.bmp':52} {bmp_out.stat().st_size:>8} bytes")
+    for rel in ("Platforms/DesktopGL/Icon.bmp",
+                "Platforms/DesktopGL.KNI/Icon.bmp"):
+        bmp_out = ROOT / rel
+        bmp.save(bmp_out, format="BMP")
+        print(f"{rel:52} {bmp_out.stat().st_size:>8} bytes")
 
     preview = ROOT / "Images/icon.png"
     preview.parent.mkdir(exist_ok=True)

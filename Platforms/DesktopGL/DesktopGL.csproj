@@ -36,6 +36,15 @@
     </Compile>
   </ItemGroup>
 
+  <!-- SDL looks the window icon up as "UltimateTicTacToe.Icon.bmp", then "Icon.bmp".
+       The default resource name is "DesktopGL.Icon.bmp", after the project file, which
+       matches neither, so without LogicalName the window shows MonoGame's logo. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Icon.bmp">
+      <LogicalName>Icon.bmp</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
   <!-- Nothing here needs building: Apos.Shapes reads the font's outlines itself, so the file
        is copied as-is and the content pipeline stays out of it. -->
   <ItemGroup>
