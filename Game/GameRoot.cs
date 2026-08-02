@@ -44,9 +44,13 @@ namespace GameProject {
         protected override void Initialize() {
             Window.AllowUserResizing = true;
 
+#if !BLAZORGL
+            // The canvas is already the size the page made it, and forcing a back buffer over
+            // that just draws the game into a corner of it.
             _graphics.PreferredBackBufferWidth = 800;
             _graphics.PreferredBackBufferHeight = 860;
             _graphics.ApplyChanges();
+#endif
 
             base.Initialize();
         }

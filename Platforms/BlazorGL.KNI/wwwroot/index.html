@@ -32,9 +32,10 @@
     <script type="module">
         import { BrotliDecode } from './js/decode.min.js';
         window.BrotliDecode = BrotliDecode;
-        // Set this to enable Brotli (.br) decompression on static webServers
-        // that don't support content compression and http://.
-        var enableBrotliDecompression = false;
+        // Decode the .br copies in JS, because itch.io serves the build as stored and won't
+        // negotiate an encoding. Off for localhost below, so a dev build skips the decode.
+        // Worth it: 14.3 MB of framework becomes 3.7 MB on a first load.
+        var enableBrotliDecompression = true;
         Blazor.start({
             loadBootResource: function (type, name, defaultUri, integrity)
             {
