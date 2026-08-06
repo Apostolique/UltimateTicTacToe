@@ -63,7 +63,7 @@ Relay to client:
 | Line | Meaning |
 | --- | --- |
 | `hosted <code>` | The room is open under this code. |
-| `joined <code>` | You have a seat. An opponent may or may not be in the other one. |
+| `joined <code> host\|guest` | You have that seat. An opponent may or may not be in the other one. |
 | `matched <code> host\|guest` | Matchmaking paired you. Both seats are filled already, so no `peer in` follows. |
 | `searching` | You're in the queue. |
 | `cancelled` | You're out of the queue. |
@@ -72,8 +72,12 @@ Relay to client:
 | `error <reason>` | The last command didn't work. |
 
 A room keeps its code while anyone is still sitting in it, so an opponent who dropped can
-reconnect with the same code instead of the host having to mint a new one.
+reconnect with the same code instead of the host having to mint a new one. That's why `join`
+answers with a seat rather than just the code: the free seat may be the host's, and the two
+seats aren't interchangeable to the game.
 
 The game's own messages ride inside `msg`, and the relay never looks at them: `play <macro>
-<micro>`, `reset`, and `hover <macro> <micro>` with `-1 -1` for nothing. Hover is a cell
-rather than a position so it lands on the right square whatever size the other window is.
+<micro>`, `reset`, `swap`, and `hover <macro> <micro>` with `-1 -1` for nothing. Hover is a
+cell rather than a position so it lands on the right square whatever size the other window
+is. `swap` trades the two marks, which the relay stays out of, so after one its idea of who
+sits where no longer matches what the two games think.

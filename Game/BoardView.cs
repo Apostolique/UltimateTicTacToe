@@ -33,12 +33,15 @@ namespace GameProject {
         readonly bool[] _seenPlayable = new bool[9];
         Mark _seenWinner = Mark.None;
         bool _seenOver;
+        /// The cell the last play landed on, as macro * 9 + micro, or -1 on a fresh board.
+        int _seenLast = -1;
 
         readonly ITween<float>[] _cellPop = new ITween<float>[81];
         readonly ITween<float>[] _macroPop = new ITween<float>[9];
         readonly ITween<float>[] _macroGlow = new ITween<float>[9];
         ITween<float> _winnerPop = Fixed(0f);
         ITween<float> _bannerPop = Fixed(0f);
+        ITween<float> _lastPop = Fixed(0f);
 
         (int Macro, int Micro)? _cursorCell;
         Vector2 _cursorTarget;
@@ -88,6 +91,17 @@ namespace GameProject {
                     _seenPlayable[macro] = playable;
                     _macroGlow[macro] = new FloatTween(_macroGlow[macro].Value, playable ? 1f : 0f, 260, Easing.CircInOut);
                 }
+            }
+
+            int last = board.LastMacro < 0 ? -1 : board.LastMacro * 9 + board.LastMicro;
+            if (last != _seenLast) {
+                _seenLast = last;
+                // Behind the mark it belongs to rather than with it, so the thump lands first
+                // and the ring settles around it. Moving on is a cut, the way a chess board
+                // moves its highlight, since two lit cells would both look like the last move.
+                _lastPop = last < 0
+                    ? FadeOut(_lastPop.Value)
+                    : new WaitTween<float>(0f, 160).To(1f, 320, Easing.CubeOut);
             }
 
             if (board.Winner != _seenWinner) {
@@ -140,6 +154,7 @@ namespace GameProject {
             DrawMicroGrids(sb, layout);
             DrawMacroGrid(sb, board, layout);
             DrawForcedOutline(sb, board, layout);
+            DrawLastMove(sb, layout);
             DrawMarks(sb, layout);
             DrawCursor(sb, layout);
             DrawWinner(sb, board, layout);
@@ -187,6 +202,26 @@ namespace GameProject {
             var dash = DashStyle.FromCount(AntCount, 0.55f, -phase, DashCap.Round);
 
             sb.BorderRectangle(origin, size, tint * glow, OutlineThickness * layout.Unit, 14f * layout.Unit, dash: dash);
+        }
+
+        /// <summary>A ring around the cell the last play landed on, so an opponent's move is
+        /// findable without having watched it arrive.</summary>
+        /// In the mark's own color rather than a neutral one: the two players read this board
+        /// by color already, and whose move it was is half of what the ring is for.
+        void DrawLastMove(ShapeBatch sb, BoardLayout layout) {
+            if (_seenLast < 0) return;
+
+            int macro = _seenLast / 9;
+            // A settled macro swallows its own cells, so the ring goes with them.
+            float pop = _lastPop.Value * (1f - _macroPop[macro].Value);
+            if (pop <= 0.001f) return;
+
+            (_, _, Color glow) = Palette(_seenCells[_seenLast]);
+            float half = layout.Micro * 0.5f - 3f * layout.Unit;
+            Vector2 origin = layout.MicroCenter(macro, _seenLast % 9) - new Vector2(half);
+
+            sb.BorderRectangle(origin, new Vector2(half * 2f), glow * (0.6f * pop),
+                1.6f * layout.Unit, 6f * layout.Unit);
         }
 
         void DrawMicroGrids(ShapeBatch sb, BoardLayout layout) {
@@ -300,7 +335,8 @@ namespace GameProject {
                 Mark.O => "O wins",
                 _ => "Draw",
             };
-            const string hint = "press R to play again";
+            // A phone has no R, and the button under the board is the answer there.
+            const string hint = "tap play again, or press R";
 
             // The whole panel grows a little as it fades in, so every measurement rides the
             // animated size rather than being laid out once and scaled after.

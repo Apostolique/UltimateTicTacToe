@@ -6,8 +6,8 @@
 // `websocat ws://localhost:8787/ws` is a working client.
 //
 //   in  : host | join <code> | queue | cancel | leave | msg <rest...>
-//   out : hosted <code> | joined <code> | matched <code> host|guest | searching | cancelled
-//         peer in | peer out | msg <rest...> | error <reason>
+//   out : hosted <code> | joined <code> host|guest | matched <code> host|guest | searching
+//         cancelled | peer in | peer out | msg <rest...> | error <reason>
 
 // No 0/O/1/I/L, so a code read aloud or typed off a screenshot can't be ambiguous.
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -101,12 +101,15 @@ export class Relay {
 
     this.leave(ws, { quiet: true });
 
-    // A room whose host left keeps its code, so the open seat may be either one.
-    if (!room.host) room.host = ws;
+    // A room whose host left keeps its code, so the open seat may be either one. Which one
+    // decides who plays first, and the client has no way to work that out for itself: assume
+    // guest and two players who both took over a host seat will both wait for the other.
+    const seat = room.host ? 'guest' : 'host';
+    if (seat === 'host') room.host = ws;
     else room.guest = ws;
     this.peerState(ws).room = code;
 
-    this.send(ws, `joined ${code}`);
+    this.send(ws, `joined ${code} ${seat}`);
     const other = this.other(room, ws);
     if (other) {
       this.send(other, 'peer in');

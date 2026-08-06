@@ -31,6 +31,11 @@ namespace GameProject.Pages
                 GameRoot.BackBuffer = new Point(
                     js.Invoke<int>("utttBackBufferWidth"),
                     js.Invoke<int>("utttBackBufferHeight"));
+                GameRoot.VisibleHeight = js.Invoke<float>("utttVisibleHeight");
+
+                // The page can raise a keyboard and the canvas can't, so the join code's field
+                // gets mirrored onto a real input.
+                TextEntry.Host ??= new BrowserTextEntry(js);
             }
 
             // init game

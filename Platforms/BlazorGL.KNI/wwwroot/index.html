@@ -28,6 +28,22 @@
         <a class="dismiss">x</a>
     </div>
 
+    <!-- The join code's real field, parked over the one the game draws. A canvas isn't
+         focusable, so this is the thing a phone raises its keyboard for. The form is here for
+         the go key: submitting is what tells the game to join.
+
+         Invisible by being transparent rather than by `opacity: 0` or a spot off screen. An
+         off screen field is what iOS scrolls to when the keyboard covers it, and a field with
+         no opacity is one some browsers decline to focus. `pointer-events: none` so the tap
+         still reaches the canvas, and 16px so iOS doesn't zoom the page on focus. -->
+    <form id="utttTextEntryForm" style="display: none; position: fixed; margin: 0; padding: 0; pointer-events: none;">
+        <input id="utttTextEntry" type="text" inputmode="text" enterkeyhint="go"
+               autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"
+               style="width: 100%; height: 100%; box-sizing: border-box; margin: 0; padding: 0;
+                      border: 0; outline: 0; background: transparent; color: transparent;
+                      caret-color: transparent; font-size: 16px; pointer-events: none;" />
+    </form>
+
     <!-- Don't fetch the `.br` copies and decode them here. itch.io unpacks `.br` on the way
          out and Cloudflare gzips whatever it serves, so the bytes arriving are already plain
          and a second decode fails with "Corrupted padding bits". -->
@@ -117,7 +133,10 @@
         {
             if (document.visibilityState === 'hidden') return;
             if (utttActive && !force) return;
-            try { window.focus(); } catch (e) { }
+            // Not while the code field has the keyboard. Only the frame needs the focus and
+            // dispatching the event is what KNI reads, so the element keeps its own.
+            if (document.activeElement !== document.getElementById('utttTextEntry'))
+                try { window.focus(); } catch (e) { }
             window.dispatchEvent(new Event('focus'));
         }
 
@@ -134,9 +153,95 @@
         window.addEventListener('touchstart', function () { utttEnsureActive(false); }, true);
         window.addEventListener('mousedown', function () { utttEnsureActive(false); }, true);
 
+        // The game owns what's in the code field and draws it. This keeps the real input
+        // holding the same string, so what the keyboard types lands somewhere the game can
+        // read it back from.
+        var utttTextEntryRect = null;
+        var utttTextEntrySubmitted = false;
+
+        function utttTextEntryShow(x, y, w, h, text, maxLength)
+        {
+            var form = document.getElementById('utttTextEntryForm');
+            var input = document.getElementById('utttTextEntry');
+            if (!form || !input) return;
+
+            utttTextEntryRect = { x: x, y: y, w: w, h: h };
+
+            form.style.display = 'block';
+            form.style.left = x + 'px';
+            form.style.top = y + 'px';
+            form.style.width = w + 'px';
+            form.style.height = h + 'px';
+            input.maxLength = maxLength;
+
+            // The game strips whatever isn't in the relay's alphabet and upper cases the rest,
+            // and this is that coming back. Only on a real difference, since assigning moves
+            // the caret to the end.
+            if (input.value !== text) input.value = text;
+        }
+
+        function utttTextEntryHide()
+        {
+            utttTextEntryRect = null;
+
+            var form = document.getElementById('utttTextEntryForm');
+            var input = document.getElementById('utttTextEntry');
+            if (!form || !input) return;
+
+            input.blur();
+            input.value = '';
+            form.style.display = 'none';
+        }
+
+        // Two flags then the value verbatim: whether the field has focus, then whether the go
+        // key has been pressed since the last read.
+        function utttTextEntryRead()
+        {
+            var input = document.getElementById('utttTextEntry');
+            if (!input) return '00';
+
+            var state = (document.activeElement === input ? '1' : '0')
+                      + (utttTextEntrySubmitted ? '1' : '0')
+                      + input.value;
+            utttTextEntrySubmitted = false;
+            return state;
+        }
+
+        // The hit test is here rather than in the game's own reaction to the tap because iOS
+        // only raises the keyboard for a `focus()` that a gesture is still running, and the
+        // game is a frame behind the gesture.
+        function utttTextEntryPick(e)
+        {
+            if (!utttTextEntryRect) return;
+
+            var input = document.getElementById('utttTextEntry');
+            if (!input) return;
+
+            var r = utttTextEntryRect;
+            if (e.clientX >= r.x && e.clientX < r.x + r.w &&
+                e.clientY >= r.y && e.clientY < r.y + r.h)
+                input.focus();
+            else
+                input.blur();
+        }
+
         window.utttBackBufferWidth = function () { return window.utttTarget.w; };
         window.utttBackBufferHeight = function () { return window.utttTarget.h; };
         window.utttUiScale = function () { return window.utttTarget.scale; };
+
+        // How much of the canvas isn't behind the keyboard, in css pixels. A phone keyboard
+        // takes the bottom of the layout viewport without resizing it, so the canvas keeps its
+        // full height and anything centered in that height ends up underneath.
+        window.utttVisibleHeight = function ()
+        {
+            var full = window.utttTarget.h / window.utttTarget.scale;
+            var vv = window.visualViewport;
+            if (!vv) return full;
+
+            // iOS scrolls the page to make room instead of only shrinking, so the offset is
+            // part of where the covered part starts.
+            return Math.min(vv.offsetTop + vv.height, full);
+        };
 
         var utttSynced = false;
 
@@ -170,12 +275,29 @@
             document.getElementById('theCanvas')
                 .addEventListener("contextmenu", e => e.preventDefault());
 
+            var textEntryForm = document.getElementById('utttTextEntryForm');
+            var textEntryInput = document.getElementById('utttTextEntry');
+            textEntryForm.addEventListener('submit', function (e)
+            {
+                e.preventDefault();
+                utttTextEntrySubmitted = true;
+                textEntryInput.blur();
+            });
+            // Capture, so the focus lands before KNI's own handler calls `preventDefault` on
+            // the touch. On both ends of the tap because iOS is picky about which one counts.
+            window.addEventListener('pointerdown', utttTextEntryPick, true);
+            window.addEventListener('pointerup', utttTextEntryPick, true);
+
             // begin game loop
             window.requestAnimationFrame(tickJS);
         };
 
         window.addEventListener("keydown", function(event)
         {
+            // Not while the code field has the keyboard. An arrow key is how you move the caret
+            // there, and nothing scrolls behind a modal anyway.
+            if (document.activeElement === document.getElementById('utttTextEntry')) return;
+
             // Prevent Arrows Keys and Spacebar scrolling the outer page
             // when running inside an iframe. e.g: itch.io embedding.
             if ([32, 37, 38, 39, 40].indexOf(event.keyCode) > -1)

@@ -29,6 +29,12 @@ namespace GameProject {
         /// corner of its own canvas.
         public static Point? BackBuffer;
 
+        /// <summary>How much of the viewport a soft keyboard hasn't covered, in game units.
+        /// Null everywhere the host has no way to know.</summary>
+        /// A phone keyboard takes the bottom of the page without shrinking it, so the canvas
+        /// keeps its full height and the lobby panel would sit centered half behind it.
+        public static float? VisibleHeight;
+
         static readonly Board _board = new Board();
 
         /// The network code drives the game through these, so a play that arrived over the
@@ -110,7 +116,12 @@ namespace GameProject {
             _restartButton = RestartButtonBounds(layout, height);
             _restartHovered = !_lobby.IsOpen && _board.IsOver && _restartButton.Contains(mouse);
 
-            _lobby.Update(width, height, mouse, clicked);
+            // The panel closes inside its own update, so by the line after it the board is
+            // already reachable again and the press that hit Close is still in hand. Spend it
+            // here: the alternative is a move played on whatever square the button was over.
+            bool panelWasOpen = _lobby.IsOpen;
+            _lobby.Update(_font, width, MathF.Min(VisibleHeight ?? height, height), mouse, clicked);
+            if (panelWasOpen) clicked = false;
 
             (int Macro, int Micro)? hovered = null;
             if (!_lobby.IsOpen) {

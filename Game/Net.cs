@@ -99,13 +99,17 @@ namespace GameProject {
                     Status = Mode.Waiting;
                     break;
 
-                case "joined":
+                case "joined": {
                     // The seat is ours, but the other one may still be empty: the relay keeps
                     // a code alive after its host drops, so joining doesn't imply an opponent.
-                    Code = rest;
-                    IsHost = false;
+                    // Which seat it was is the relay's to say, and it isn't always the guest:
+                    // a host who dropped and came back lands in the seat they left.
+                    (string code, string role) = SplitFirst(rest);
+                    Code = code;
+                    IsHost = role == "host";
                     Status = Mode.Waiting;
                     break;
+                }
 
                 case "matched": {
                     (string code, string role) = SplitFirst(rest);
@@ -162,6 +166,10 @@ namespace GameProject {
                     RemoteHover = null;
                     break;
 
+                case "swap":
+                    Swap();
+                    break;
+
                 case "hover": {
                     (string a, string b) = SplitFirst(rest);
                     RemoteHover =
@@ -182,6 +190,26 @@ namespace GameProject {
 
         public static void SendReset() {
             if (HasPeer) _client.Send("msg reset");
+        }
+
+        /// <summary>Trade marks with the opponent and start again.</summary>
+        /// The relay never hears about it, so its idea of who sits in which seat stops matching
+        /// after one of these. That only matters if somebody reconnects, and coming back to the
+        /// mark the seat says is a reasonable place to land.
+        public static void SendSwap() {
+            if (!HasPeer) return;
+
+            _client.Send("msg swap");
+            Swap();
+        }
+
+        /// Both sides run this, so a swap either happens on both boards or on neither. Starting
+        /// again with it: a half played position doesn't survive its two players trading marks.
+        static void Swap() {
+            IsHost = !IsHost;
+            RemoteHover = null;
+            _sentHover = null;
+            GameRoot.Reset();
         }
 
         /// <summary>Only goes out when the hovered cell actually changes.</summary>

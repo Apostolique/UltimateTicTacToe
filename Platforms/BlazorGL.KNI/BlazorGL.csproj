@@ -47,6 +47,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="BrowserTextEntry.cs" />
     <Compile Include="Pages/Index.razor.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
@@ -60,7 +61,11 @@
   <!-- Nothing here needs building: Apos.Shapes reads the font's outlines itself, so the file
        is served as-is. The KNI pipeline shells out to MGCB.exe, which doesn't exist on the
        Linux runner that publishes this. Linking it under wwwroot makes it a static web asset,
-       which is what puts it where TitleContainer looks for it. -->
+       which is what puts it where TitleContainer looks for it.
+
+       Publish only. The asset's content root comes out as this project's `wwwroot`, which the
+       file never gets copied into, so `dotnet run` serves a 404 and the game dies in
+       `LoadContent`. Test the browser build against `dotnet publish` output. -->
   <ItemGroup>
     <Content Include="../../Content/**/*.ttf" Exclude="../../Content/bin/**;../../Content/obj/**">
       <Link>wwwroot/Content/%(RecursiveDir)%(Filename)%(Extension)</Link>
