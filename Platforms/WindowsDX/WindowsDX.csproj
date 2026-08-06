@@ -15,7 +15,7 @@
 
   <ItemGroup>
     <PackageReference Include="MonoGame.Framework.WindowsDX" Version="3.8.5" />
-    <PackageReference Include="Apos.Input" Version="2.5.0" />
+    <PackageReference Include="Apos.Input" Version="3.0.0" />
     <PackageReference Include="Apos.Shapes" Version="0.8.1" />
     <PackageReference Include="Apos.Tweens" Version="0.2.0" />
   </ItemGroup>

@@ -21,6 +21,18 @@ namespace GameProject.Pages
         [JSInvokable]
         public void TickDotNet()
         {
+            // The page sizes the canvas in device pixels, and this is how much denser that made
+            // it plus the size the back buffer has to match. Read every frame rather than once,
+            // since a rotation or a browser zoom moves it and KNI resets the canvas whenever the
+            // window resizes. The call is in-process under WASM, so it costs no round trip.
+            if (JsRuntime is IJSInProcessRuntime js)
+            {
+                GameRoot.UiScale = Math.Clamp(js.Invoke<float>("utttUiScale"), 1f, 8f);
+                GameRoot.BackBuffer = new Point(
+                    js.Invoke<int>("utttBackBufferWidth"),
+                    js.Invoke<int>("utttBackBufferHeight"));
+            }
+
             // init game
             if (_game == null)
             {

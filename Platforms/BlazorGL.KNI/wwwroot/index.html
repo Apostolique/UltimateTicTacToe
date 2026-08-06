@@ -46,9 +46,115 @@
     <script src="_content/nkast.Wasm.XR/js/XR.8.0.11.js"></script>
 
     <script>
+        // The backing store is sized in device pixels while the element stays sized in CSS
+        // pixels, so the game renders at the screen's real resolution instead of being upscaled
+        // from a third of it on a phone. KNI resets the backing store to the CSS size in
+        // `UpdateBackBufferSize` on every resize, so this re-asserts each frame rather than
+        // running once, and the game re-applies the matching back buffer when it notices.
+        //
+        // Sizing the canvas rather than zooming the viewport is what makes this survive
+        // itch.io: a viewport meta tag only applies to the top level document and the game is
+        // served in an iframe, so the tag would be ignored exactly where it's needed.
+        //
+        // The pointer is untouched by any of it. KNI reports mouse and touch in CSS pixels and
+        // scales touch by `DisplayWidth / ClientBounds.Width`, which are both the backing store,
+        // so a contact still arrives in the units the layout uses.
+        window.utttTarget = { w: 0, h: 0, scale: 1 };
+
+        function utttSizeCanvas()
+        {
+            var canvas = document.getElementById('theCanvas');
+            var holder = document.getElementById('canvasHolder');
+            if (!canvas || !holder) return;
+
+            var dpr = window.devicePixelRatio || 1;
+            var cssW = holder.clientWidth, cssH = holder.clientHeight;
+
+            // A backgrounded page measures zero. Resizing on that would collapse the back buffer
+            // and leave a black screen behind when the tab comes back, so leave it alone and let
+            // the next frame after it's visible again do the work.
+            if (cssW <= 0 || cssH <= 0) return;
+
+            var bw = Math.round(cssW * dpr), bh = Math.round(cssH * dpr);
+
+            if (canvas.width !== bw || canvas.height !== bh)
+            {
+                canvas.width = bw;
+                canvas.height = bh;
+            }
+            // Without an explicit CSS size the element takes its width attribute as CSS pixels,
+            // which would blow it up to three times the screen.
+            if (canvas.style.width !== cssW + 'px')
+            {
+                canvas.style.width = cssW + 'px';
+                canvas.style.height = cssH + 'px';
+            }
+
+            window.utttTarget = { w: bw, h: bh, scale: dpr };
+        }
+
+        // KNI drives `Game.IsActive` off the window's focus and blur events, and Apos.Input gates
+        // every condition on it, so an inactive game can't report a press. The pointer position
+        // isn't gated, which is why this shows up as taps that only ever hover instead of as
+        // input dying outright.
+        //
+        // In an iframe that state sticks: coming back to a backgrounded itch.io page fires no
+        // focus event on the frame, so the blur from leaving is never undone. Visibility is the
+        // signal that actually tracks this on the web, and a pointer arriving is proof the player
+        // is on the game whatever the frame thinks, so the missing focus is synthesized from
+        // both. KNI only listens for the event, so dispatching one is enough.
+        // Mirrors KNI's own flag rather than asking the browser. `document.hasFocus()` is the
+        // wrong question: going fullscreen from the itch.io page leaves the frame's document
+        // focused while KNI never saw a focus event, so the game reads inactive and a guard on
+        // hasFocus() would decline to fix it. These two listeners see exactly what KNI's do.
+        var utttActive = false;
+        window.addEventListener('focus', function () { utttActive = true; });
+        window.addEventListener('blur', function () { utttActive = false; });
+
+        /// force: dispatch even when the game already reads active. For the rare transitions,
+        /// where a redundant activation is cheaper than staying wrong.
+        function utttEnsureActive(force)
+        {
+            if (document.visibilityState === 'hidden') return;
+            if (utttActive && !force) return;
+            try { window.focus(); } catch (e) { }
+            window.dispatchEvent(new Event('focus'));
+        }
+
+        document.addEventListener('visibilitychange', function ()
+        {
+            if (document.visibilityState === 'visible') utttEnsureActive(true);
+        });
+        window.addEventListener('pageshow', function () { utttEnsureActive(true); });
+        // Entering or leaving fullscreen moves focus without telling the frame about it.
+        document.addEventListener('fullscreenchange', function () { utttEnsureActive(true); });
+        document.addEventListener('webkitfullscreenchange', function () { utttEnsureActive(true); });
+        // Capture, so the game is active before KNI's own handler queues the contact. Not forced,
+        // so an ordinary tap doesn't raise an activation every time.
+        window.addEventListener('touchstart', function () { utttEnsureActive(false); }, true);
+        window.addEventListener('mousedown', function () { utttEnsureActive(false); }, true);
+
+        window.utttBackBufferWidth = function () { return window.utttTarget.w; };
+        window.utttBackBufferHeight = function () { return window.utttTarget.h; };
+        window.utttUiScale = function () { return window.utttTarget.scale; };
+
+        var utttSynced = false;
+
         function tickJS()
         {
+            utttSizeCanvas();
             window.theInstance.invokeMethod('TickDotNet');
+
+            // The game window is built on the first tick, and KNI registers its focus listener
+            // with it. This script registered earlier, so any focus event in between was seen
+            // here and missed there, which would leave the mirror reading active over a game
+            // that isn't. One forced pass settles it.
+            if (!utttSynced)
+            {
+                utttSynced = true;
+                utttEnsureActive(true);
+            }
+
             window.requestAnimationFrame(tickJS);
         }
 
@@ -56,13 +162,13 @@
         {
             window.theInstance = instance;
 
-            // set initial canvas size
-            var canvas = document.getElementById('theCanvas');
-            var holder = document.getElementById('canvasHolder');
-            canvas.width = holder.clientWidth;
-            canvas.height = holder.clientHeight;
+            // Sized before the first tick, so the graphics device reads the real resolution in
+            // `PlatformInitialize` rather than starting soft and resetting a frame later.
+            utttSizeCanvas();
+
             // disable context menu on right click
-            canvas.addEventListener("contextmenu", e => e.preventDefault());
+            document.getElementById('theCanvas')
+                .addEventListener("contextmenu", e => e.preventDefault());
 
             // begin game loop
             window.requestAnimationFrame(tickJS);

@@ -13,6 +13,22 @@ namespace GameProject {
     public class GameRoot : Game {
         public static Settings Settings;
 
+        /// <summary>Back buffer pixels per game unit. The browser host sets it; everything else
+        /// leaves it at 1.</summary>
+        /// A phone's screen has about three real pixels per CSS pixel, and the browser build
+        /// renders at the real count so the board doesn't come out soft. That would shrink the
+        /// hud to a third of its size, since <see cref="BoardLayout.HudHeight"/> and the label
+        /// sizes are absolute, so the game keeps working in CSS pixels and hands the scale to
+        /// the view matrix instead. Apos.Shapes draws analytically, so the shapes stay sharp
+        /// under it rather than being magnified.
+        public static float UiScale = 1f;
+
+        /// <summary>Back buffer the browser host wants, in device pixels. Null everywhere else.</summary>
+        /// KNI resizes the canvas back to the CSS size whenever the window changes, so the back
+        /// buffer has to be put back alongside it or the two disagree and the game draws into a
+        /// corner of its own canvas.
+        public static Point? BackBuffer;
+
         static readonly Board _board = new Board();
 
         /// The network code drives the game through these, so a play that arrived over the
@@ -66,20 +82,33 @@ namespace GameProject {
         }
 
         protected override void Update(GameTime gameTime) {
-            InputHelper.UpdateSetup();
+            InputHelper.UpdateSetup(gameTime);
             TweenHelper.UpdateSetup(gameTime);
 
             Net.PollEvents();
 
-            float width = GraphicsDevice.Viewport.Width;
-            float height = GraphicsDevice.Viewport.Height;
+            if (BackBuffer is Point target && target.X > 0 && target.Y > 0 &&
+                (_graphics.PreferredBackBufferWidth != target.X || _graphics.PreferredBackBufferHeight != target.Y)) {
+                _graphics.PreferredBackBufferWidth = target.X;
+                _graphics.PreferredBackBufferHeight = target.Y;
+                _graphics.ApplyChanges();
+            }
+
+            float width = GraphicsDevice.Viewport.Width / UiScale;
+            float height = GraphicsDevice.Viewport.Height / UiScale;
             var layout = BoardLayout.Fit(width, height);
 
-            Vector2 mouse = InputHelper.NewMouse.Position.ToVector2();
+            // No division here. The canvas is denser than its own css size, and KNI reports both
+            // the mouse and touch against that css size, so a pointer already arrives in the
+            // units the layout works in.
+            Vector2 mouse = Pointer.Position;
             bool clicked = _playerClick.Pressed();
 
             _onlineButton = OnlineButtonBounds(layout);
             _onlineHovered = !_lobby.IsOpen && _onlineButton.Contains(mouse);
+
+            _restartButton = RestartButtonBounds(layout, height);
+            _restartHovered = !_lobby.IsOpen && _board.IsOver && _restartButton.Contains(mouse);
 
             _lobby.Update(width, height, mouse, clicked);
 
@@ -89,6 +118,9 @@ namespace GameProject {
                     _lobby.Toggle();
                 } else if (clicked && _onlineHovered) {
                     _lobby.Open();
+                } else if (clicked && _restartHovered) {
+                    Net.SendReset();
+                    Reset();
                 } else {
                     hovered = PlayTurn(layout, mouse, clicked);
                 }
@@ -133,11 +165,11 @@ namespace GameProject {
         protected override void Draw(GameTime gameTime) {
             GraphicsDevice.Clear(BoardView.Background);
 
-            float width = GraphicsDevice.Viewport.Width;
-            float height = GraphicsDevice.Viewport.Height;
+            float width = GraphicsDevice.Viewport.Width / UiScale;
+            float height = GraphicsDevice.Viewport.Height / UiScale;
             var layout = BoardLayout.Fit(width, height);
 
-            _sb.Begin();
+            _sb.Begin(view: Matrix.CreateScale(UiScale, UiScale, 1f));
             _view.Draw(_sb, _font, _board, layout);
             DrawHud(layout);
             _lobby.Draw(_sb, _font, width, height);
@@ -155,6 +187,31 @@ namespace GameProject {
                 new Vector2(w, 28f));
         }
 
+        string StatusLabel() {
+            string status = _board.Winner switch {
+                Mark.X => "X wins",
+                Mark.O => "O wins",
+                _ => _board.IsDraw ? "Draw" : _board.Turn == Mark.X ? "X to play" : "O to play",
+            };
+            if (Net.HasPeer && !_board.IsOver) {
+                status += Net.IsLocalTurn(_isPlayer1) ? " - your turn" : " - their turn";
+            }
+            return status;
+        }
+
+        /// <summary>Centered in the room under the board, and only once the game is over.</summary>
+        /// A phone has no keyboard to press R with, so the reset needs something to tap. It goes
+        /// under the board rather than in the hud because the hud strip is only the board's
+        /// width, and on a phone the status and the online button have already spent it.
+        Lobby.Bounds RestartButtonBounds(BoardLayout layout, float viewportHeight) {
+            var size = new Vector2(_font.MeasureString(RestartLabel, 15f).X + 24f, 28f);
+            float bottom = layout.Origin.Y + layout.Size;
+            return new Lobby.Bounds(
+                new Vector2(layout.Center.X - size.X / 2f,
+                            bottom + (viewportHeight - bottom - size.Y) / 2f),
+                size);
+        }
+
         string OnlineLabel() => Net.Status switch {
             Net.Mode.Connecting => "connecting...",
             Net.Mode.Waiting => Net.IsHost ? $"code {Net.Code}" : $"waiting {Net.Code}",
@@ -170,14 +227,7 @@ namespace GameProject {
             var origin = new Vector2(layout.Origin.X, y);
 
             Color c = _board.Turn == Mark.X ? TWColor.Red500 : TWColor.Blue500;
-            string status = _board.Winner switch {
-                Mark.X => "X wins",
-                Mark.O => "O wins",
-                _ => _board.IsDraw ? "Draw" : _board.Turn == Mark.X ? "X to play" : "O to play",
-            };
-            if (Net.HasPeer && !_board.IsOver) {
-                status += Net.IsLocalTurn(_isPlayer1) ? " - your turn" : " - their turn";
-            }
+            string status = StatusLabel();
 
             if (!_board.IsOver) {
                 _sb.DrawRectangle(origin, new Vector2(swatch), c, TWColor.Gray200, 2f, 6f);
@@ -189,11 +239,24 @@ namespace GameProject {
             _sb.DrawString(_font, status,
                 new Vector2(origin.X + (_board.IsOver ? 0f : swatch + 12f), textY), size, TWColor.Gray100);
 
+            if (_board.IsOver) {
+                Color restartFill = _restartHovered && Pointer.Source == PointerSource.Mouse
+                    ? TWColor.Gray700 : TWColor.Gray800;
+                _sb.FillRectangle(_restartButton.XY, _restartButton.Size, restartFill, 8f);
+                _sb.BorderRectangle(_restartButton.XY, _restartButton.Size, TWColor.Gray600, 1.5f, 8f);
+                _sb.DrawString(_font, RestartLabel,
+                    new Vector2(_restartButton.XY.X + 12f,
+                                _restartButton.XY.Y + (_restartButton.Size.Y - _font.LineHeight * 15f) / 2f),
+                    15f, TWColor.Gray200);
+            }
+
             string label = OnlineLabel();
             const float labelSize = 15f;
             Color fill = Net.HasPeer ? TWColor.Emerald900 : Net.IsOnline ? TWColor.Blue900 : TWColor.Gray800;
             Color border = Net.HasPeer ? TWColor.Emerald600 : Net.IsOnline ? TWColor.Blue600 : TWColor.Gray600;
-            if (_onlineHovered) fill = TWColor.Gray700;
+            // Touch has no hover, and the pointer stays where the last tap landed, so the button
+            // would sit lit up with nothing on the screen.
+            if (_onlineHovered && Pointer.Source == PointerSource.Mouse) fill = TWColor.Gray700;
 
             _sb.FillRectangle(_onlineButton.XY, _onlineButton.Size, fill, 8f);
             _sb.BorderRectangle(_onlineButton.XY, _onlineButton.Size, border, 1.5f, 8f);
@@ -243,10 +306,19 @@ namespace GameProject {
         readonly BoardView _view = new BoardView();
         readonly Lobby _lobby = new Lobby();
 
+        const string RestartLabel = "play again";
+
         Lobby.Bounds _onlineButton;
         bool _onlineHovered;
 
-        ICondition _playerClick = new MouseCondition(MouseButton.LeftButton);
+        Lobby.Bounds _restartButton;
+        bool _restartHovered;
+
+        ICondition _playerClick =
+            new AnyCondition(
+                new MouseCondition(MouseButton.LeftButton),
+                new TouchCondition()
+            );
         ICondition _reset = new KeyboardCondition(Keys.R);
         ICondition _toggleLobby = new KeyboardCondition(Keys.Tab);
     }
